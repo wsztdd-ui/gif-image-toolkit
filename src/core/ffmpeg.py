@@ -32,7 +32,11 @@ class FfmpegCancelled(FfmpegError):
 def _base_dirs():
     dirs = []
     if getattr(sys, "frozen", False):
-        dirs.append(os.path.dirname(sys.executable))
+        exe_dir = os.path.dirname(sys.executable)
+        dirs.append(exe_dir)
+        dirs.append(os.path.join(exe_dir, "_internal"))   # PyInstaller 6 onedir 数据目录
+        dirs.append(os.path.join(exe_dir, "..", "Frameworks"))  # macOS .app 结构
+        dirs.append(os.path.join(exe_dir, "..", "Frameworks", "_internal"))
         meipass = getattr(sys, "_MEIPASS", None)
         if meipass:
             dirs.append(meipass)

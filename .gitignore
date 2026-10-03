@@ -16,3 +16,11 @@ bin/ffprobe.exe
 publish/
 publish.zip
 .venv/
+bin/ffmpeg
+bin/ffprobe
+build/icon.iconset/
+build/icon.icns
+
+# PyInstaller 工作目录
+build/gifkit_mac/
+build/gifkit/

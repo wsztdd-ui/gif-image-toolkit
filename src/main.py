@@ -111,15 +111,23 @@ QCheckBox:disabled{{color:#bdbdbd;}}
 """
 
 
-def _load_bundled_font():
-    """优先加载随包内置的思源黑体；无则回退系统已装的思源/雅黑。"""
+def _font_bases():
+    """按优先级列出可能存放 fonts/ 的目录（覆盖源码运行与各平台打包布局）。"""
     bases = []
     if getattr(sys, "frozen", False):
-        base = getattr(sys, "_MEIPASS", None) or os.path.dirname(sys.executable)
-        bases.append(base)
-        bases.append(os.path.dirname(sys.executable))
+        exe_dir = os.path.dirname(sys.executable)
+        bases.append(getattr(sys, "_MEIPASS", None) or exe_dir)
+        bases.append(os.path.join(exe_dir, "_internal"))
+        bases.append(exe_dir)
+        bases.append(os.path.join(exe_dir, "..", "Frameworks"))
+        bases.append(os.path.join(exe_dir, "..", "Frameworks", "_internal"))
     bases.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    for base in bases:
+    return [b for b in bases if b]
+
+
+def _load_bundled_font():
+    """优先加载随包内置的思源黑体；无则回退系统已装的思源/雅黑。"""
+    for base in _font_bases():
         for name in FONT_FILES:
             p = os.path.join(base, "fonts", name)
             if os.path.isfile(p):
@@ -151,6 +159,19 @@ def main():
     win.setWindowTitle(f"GifKit — GIF截取 & 图片压缩  v{APP_VERSION}")
     win.resize(1120, 740)
     win.show()
+    if os.environ.get("GIFKIT_SMOKE"):      # CI/打包冒烟：报告 ffmpeg/字体检测后自动退出
+        from PySide6.QtCore import QTimer
+        from core import ffmpeg as _ff
+        ok, msg = _ff.available()
+        font_path = next((os.path.join(b, "fonts", FONT_FILES[0])
+                          for b in _font_bases()
+                          if os.path.isfile(os.path.join(b, "fonts", FONT_FILES[0]))),
+                         None)
+        fams = QFontDatabase.applicationFontFamilies(
+            QFontDatabase.addApplicationFont(font_path)) if font_path else []
+        print(f"[smoke] ffmpeg available: {ok} ({msg})", flush=True)
+        print(f"[smoke] bundled font: {list(fams) or '未找到（回退系统字体）'}", flush=True)
+        QTimer.singleShot(2500, app.quit)
     sys.exit(app.exec())
 
 

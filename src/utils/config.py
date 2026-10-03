@@ -4,7 +4,7 @@ import os
 import sys
 
 APP_NAME = "GifKit"
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.2.1"
 
 DEFAULTS = {
     "gif": {
@@ -21,7 +21,17 @@ DEFAULTS = {
 
 
 def app_dir() -> str:
+    """配置所在目录：Windows 沿用 exe 同目录（绿色便携）；mac 放用户 Application
+    Support（.app 包内不便写入）；Linux 优先 AppImage 所在目录，其次解包目录。"""
     if getattr(sys, "frozen", False):
+        if sys.platform == "darwin":
+            base = os.environ.get("HOME") or os.path.expanduser("~")
+            return os.path.join(base, "Library", "Application Support", APP_NAME)
+        if sys.platform.startswith("linux"):
+            appimage = os.environ.get("APPIMAGE")
+            if appimage:
+                return os.path.dirname(appimage)
+            return os.path.dirname(sys.executable)
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

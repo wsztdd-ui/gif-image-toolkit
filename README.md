@@ -1,6 +1,6 @@
 # GifKit — GIF 截取 & 图片压缩
 
-Windows 绿色免安装小工具，做两件事：
+Windows / macOS / Linux 全平台绿色免安装小工具，做两件事：
 
 1. **视频截取 GIF**：视频（TS / MP4 / MKV / AVI / MOV 等主流格式）直接拖进来，框选画面、选取时间段，**先完整生成、确认体积、再保存**。
 2. **图片压缩 / 格式转换**：批量拖入图片，按质量/尺寸压缩或互转（JPG/PNG/WebP/BMP/TIFF），前后体积一目了然。
@@ -29,13 +29,25 @@ Windows 绿色免安装小工具，做两件事：
 
 ## 📦 下载使用
 
-从 [Releases](../../releases) 下载 `GifKit.exe`（单文件绿色版，内含 ffmpeg，约 112MB），拷到任意 **Windows 10/11 x64** 机器双击即用，无需安装。设置自动保存在 exe 同目录的 `config.json`。
+到 [Releases](../../releases) 下载对应平台的文件（**全部内含 ffmpeg，无需另装**）：
+
+| 平台 | 文件 | 用法 |
+|---|---|---|
+| Windows 10/11 x64 | `GifKit-v*-win64.exe` | 双击即用，设置存在 exe 同目录 |
+| macOS Apple Silicon | `GifKit-v*-macos-arm64.zip` | 解压出 GifKit.app，拖入「应用程序」 |
+| macOS Intel | `GifKit-v*-macos-x86_64.zip` | 同上 |
+| Linux x86_64 | `GifKit-v*-linux-x86_64.AppImage` | `chmod +x` 后直接运行 |
+| Linux aarch64 | `GifKit-v*-linux-aarch64.tar.gz` | 解压后运行 `GifKit/GifKit` |
+
+> macOS 包未做 Apple 公证（无开发者账号），Gatekeeper 拦截时：右键 App → 打开，或执行 `xattr -cr /Applications/GifKit.app`。
+> macOS 设置存在「资源库/Application Support/GifKit」，Linux 存在程序所在目录。
 
 ## 🛠 从源码运行
 
-依赖：Python 3.10+（3.12 实测）
+依赖：Python 3.10+（3.12 实测）、ffmpeg / ffprobe（系统包管理器安装，或下载静态版到 `bin\`）
 
 ```bat
+:: Windows
 git clone https://github.com/wsztdd-ui/gif-image-toolkit.git
 cd gif-image-toolkit
 python -m pip install -r requirements.txt
@@ -43,14 +55,31 @@ powershell -ExecutionPolicy Bypass -File tools\install_ffmpeg.ps1
 run.bat
 ```
 
-> `bin\` 下的 ffmpeg.exe / ffprobe.exe（各约 77MB）不入库，`tools\install_ffmpeg.ps1` 会从 npmmirror 镜像一键下载解压（国内速度快）；bin 为空时程序也会回退到系统 PATH 中的 ffmpeg。
+```bash
+# macOS / Linux
+git clone https://github.com/wsztdd-ui/gif-image-toolkit.git
+cd gif-image-toolkit
+python3 -m pip install -r requirements.txt
+bash tools/install_ffmpeg.sh        # 或 brew install ffmpeg / sudo apt install ffmpeg
+./run.sh
+```
+
+> `bin\` 下的 ffmpeg / ffprobe（各约 50–80MB）不入库，安装脚本从静态构建源一键获取；bin 为空时程序回退到系统 PATH 中的 ffmpeg。
 
 ## 🔧 打包绿色版
 
 ```bat
+:: Windows（需 bin\ 内有 ffmpeg.exe/ffprobe.exe）
 build\build.bat          rem → dist\GifKit.exe   单文件版
 build\build.bat onedir   rem → dist\GifKit\     文件夹版（启动更快）
 ```
+
+```bash
+# macOS → dist/GifKit.app + zip；Linux → AppImage（x86_64）/ tar.gz（aarch64）
+./build/build.sh
+```
+
+打 tag `v*` 推送到 GitHub 会自动构建全部 5 个产物并发布 Release（见 `.github/workflows/release.yml`）。
 
 ## ✅ 测试
 
@@ -58,8 +87,8 @@ build\build.bat onedir   rem → dist\GifKit\     文件夹版（启动更快）
 |---|---|
 | `python tests\test_pipeline.py` | 端到端：TS 截取 720×405、裁剪、动图再压缩、图片压缩/量化 |
 | `python tests\test_modes.py` | I;16 / F / CMYK / PA / La 等罕见像素模式 × JPEG/WebP/PNG |
-| `python tests\test_cancel.py` | 取消生成后 ffmpeg 子进程零残留 |
-| `python tests\test_movie_release.py` | 预览动画播放中保存，文件句柄正确释放 |
+| `python tests\test_cancel.py` | 取消生成后 ffmpeg 子进程零残留（mac/Linux 用 pgrep） |
+| `python tests\test_movie_release.py` | 预览动画播放中保存，文件句柄正确释放（Windows 专项，其他平台 SKIP） |
 | `python tests\render_ui.py` | 离屏渲染 UI 冒烟（载入 → 播放 → 裁剪 → 图片页） |
 
 ## 📁 目录结构
@@ -71,11 +100,12 @@ src\
   ui\                 页面与控件（GIF 页 / 图片页 / 裁剪框选 / 双滑块时间条）
   utils\              便携配置、路径、格式化
 tests\                离线测试脚本（见上表）
-tools\                ffmpeg 一键下载脚本、Python 安装脚本
-build\                PyInstaller spec 与打包脚本
+tools\                ffmpeg 一键下载脚本（ps1 / sh）、图标生成
+build\                PyInstaller spec 与打包脚本（bat / sh）
 fonts\                Source Han Sans CN Medium（随包内置）
 docs\                 需求 / 设计 / 构建 / 使用文档
 prototype\            可交互 HTML 原型
+.github\workflows\    打 tag 自动构建五平台并发布 Release
 ```
 
 ## 🧰 技术栈

@@ -1,0 +1,160 @@
+name: release
+
+# 打 tag（v*）自动构建 5 个产物并发布 Release；
+# workflow_dispatch 可无 tag 试运行（只出 artifact，不发布）。
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------------- Windows x64（单文件绿色版） ----------------
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 下载 ffmpeg（BtbN 静态版）
+        shell: pwsh
+        run: |
+          curl.exe -fL --retry 3 -o ffmpeg.zip https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip
+          Expand-Archive -Path ffmpeg.zip -DestinationPath ffb
+          New-Item -ItemType Directory -Force bin | Out-Null
+          Copy-Item ffb/*/bin/ffmpeg.exe bin/ffmpeg.exe
+          Copy-Item ffb/*/bin/ffprobe.exe bin/ffprobe.exe
+          bin/ffmpeg.exe -version | Select-Object -First 1
+      - name: 测试
+        run: |
+          python tests/test_modes.py
+          python tests/test_pipeline.py
+      - name: 打包
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python tools/make_icon.py
+          python -m PyInstaller --noconfirm --clean build/gifkit.spec
+      - uses: actions/upload-artifact@v4
+        with:
+          name: win64
+          path: dist/GifKit.exe
+
+  # ---------------- macOS（arm64 原生 / x86_64 经 Rosetta 交叉构建） ----------------
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, target: arm64 }
+          - { os: macos-latest, target: x86_64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: 安装 x86_64 Python（conda osx-64 + Rosetta 2，Intel 云构建机已退役）
+        if: matrix.target == 'x86_64'
+        run: |
+          curl -fL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh -o mf.sh
+          bash mf.sh -b -p "$HOME/miniforge"
+          CONDA_SUBDIR=osx-64 "$HOME/miniforge/bin/conda" create -y -p "$RUNNER_TEMP/py-x64" python=3.12
+          echo "PYTHON=$RUNNER_TEMP/py-x64/bin/python" >> "$GITHUB_ENV"
+      - if: matrix.target == 'arm64'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 安装依赖
+        run: |
+          PY=${PYTHON:-python3}
+          $PY -m pip install -q -r requirements.txt pyinstaller
+      - name: 下载 ffmpeg
+        run: |
+          MACH=$(${PYTHON:-python3} -c "import platform; print(platform.machine())")
+          FFMPEG_ARCH=$MACH bash tools/install_ffmpeg.sh
+      - name: 测试
+        run: |
+          PY=${PYTHON:-python3}
+          $PY tests/test_modes.py
+          $PY tests/test_pipeline.py
+      - name: 打包
+        run: bash build/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.target }}
+          path: dist/GifKit-v*-macos-*.zip
+
+  # ---------------- Linux（x86_64 AppImage / aarch64 tar.gz） ----------------
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64 }
+          - { os: ubuntu-24.04-arm, target: aarch64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Qt 运行库
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libegl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 安装依赖
+        run: python -m pip install -q -r requirements.txt pyinstaller
+      - name: 下载 ffmpeg
+        run: bash tools/install_ffmpeg.sh
+      - name: 测试
+        run: |
+          python tests/test_modes.py
+          python tests/test_pipeline.py
+      - name: 打包
+        run: bash build/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.target }}
+          path: dist/GifKit-v*-linux-*
+
+  # ---------------- 发布（仅 tag 触发） ----------------
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [windows, macos, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: rel
+          merge-multiple: true
+      - name: 整理文件名
+        run: |
+          mv "rel/GifKit.exe" "rel/GifKit-${GITHUB_REF_NAME}-win64.exe"
+          ls -la rel/
+      - name: 发布 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat > notes.md <<'EOF'
+          全平台绿色免安装版：下载对应平台的文件，解压（或直接双击 AppImage / exe）即用，**内含 ffmpeg，无需额外安装**。
+
+          | 平台 | 文件 | 说明 |
+          |---|---|---|
+          | Windows 10/11 x64 | `*-win64.exe` | 单文件版，双击即用 |
+          | macOS Apple Silicon | `*-macos-arm64.zip` | 解压得 GifKit.app，拖入「应用程序」 |
+          | macOS Intel | `*-macos-x86_64.zip` | 同上；未签名，首次打开需右键 → 打开 |
+          | Linux x86_64 | `*-linux-x86_64.AppImage` | `chmod +x` 后直接运行 |
+          | Linux aarch64 | `*-linux-aarch64.tar.gz` | 解压后运行 `GifKit/GifKit` |
+
+          macOS 未做公证（无开发者账号），Gatekeeper 拦截时右键 App → 打开，或执行
+          `xattr -cr /Applications/GifKit.app`。设置保存位置：Windows 在 exe 同目录，
+          macOS 在「资源库/Application Support/GifKit」，Linux 在 AppImage 同目录。
+          EOF
+          gh release create "${GITHUB_REF_NAME}" rel/GifKit-* \
+            --title "GifKit ${GITHUB_REF_NAME} — 视频截取 GIF & 图片压缩（全平台绿色版）" \
+            --notes-file notes.md

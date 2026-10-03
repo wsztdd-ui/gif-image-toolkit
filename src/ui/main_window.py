@@ -1,5 +1,6 @@
 """主窗口：两个页签 + 状态栏 + 设置持久化。"""
 import base64
+import sys
 
 from PySide6.QtCore import QByteArray
 from PySide6.QtWidgets import QLabel, QMainWindow, QTabWidget
@@ -29,7 +30,10 @@ class MainWindow(QMainWindow):
         status = QLabel(tip)
         status.setStyleSheet("color:#0e700e;" if ok else "color:#c50f1f; padding:0 8px;")
         self.statusBar().addWidget(status)
-        ver = QLabel(f"v{APP_VERSION} 绿色便携版 · 设置保存在程序目录")
+        if sys.platform == "win32":
+            ver = QLabel(f"v{APP_VERSION} 绿色便携版 · 设置保存在程序目录")
+        else:
+            ver = QLabel(f"v{APP_VERSION} · {sys.platform}")
         self.statusBar().addPermanentWidget(ver)
 
         geom = cfg.data.get("win", {}).get("geom")
