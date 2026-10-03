@@ -18,6 +18,9 @@ jobs:
   # ---------------- Windows x64（单文件绿色版） ----------------
   windows:
     runs-on: windows-latest
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -39,8 +42,6 @@ jobs:
           python tests/test_modes.py
           python tests/test_pipeline.py
       - name: 打包
-        env:
-          PYTHONIOENCODING: utf-8
         run: |
           python tools/make_icon.py
           python -m PyInstaller --noconfirm --clean build/gifkit.spec

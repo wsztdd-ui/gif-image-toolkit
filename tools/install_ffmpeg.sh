@@ -21,15 +21,12 @@ pick_urls() {
       echo "https://evermeet.cx/ffmpeg/get/ffmpeg/zip https://evermeet.cx/ffmpeg/get/ffprobe/zip"
     fi
   else
-    # BtbN 与 CI/Windows 同源，GitHub 直连快；johnvansickle 为回退
+    # BtbN 与 CI/Windows 同源，GitHub 直连快（注意 Linux 产物是 tar.xz）；johnvansickle 为回退
     if [ "$ARCH" = "x86_64" ]; then
-      echo "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.zip"
-    else
-      echo "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linuxarm64-gpl.zip"
-    fi
-    if [ "$ARCH" = "x86_64" ]; then
+      echo "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz"
       echo "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
     else
+      echo "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linuxarm64-gpl.tar.xz"
       echo "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz"
     fi
   fi
