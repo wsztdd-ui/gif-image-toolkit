@@ -21,6 +21,12 @@ pick_urls() {
       echo "https://evermeet.cx/ffmpeg/get/ffmpeg/zip https://evermeet.cx/ffmpeg/get/ffprobe/zip"
     fi
   else
+    # BtbN 与 CI/Windows 同源，GitHub 直连快；johnvansickle 为回退
+    if [ "$ARCH" = "x86_64" ]; then
+      echo "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.zip"
+    else
+      echo "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linuxarm64-gpl.zip"
+    fi
     if [ "$ARCH" = "x86_64" ]; then
       echo "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
     else
@@ -72,14 +78,23 @@ if [ "$OS" = "Darwin" ]; then
   echo "ERROR: 所有下载源均失败，请手动放置 ffmpeg/ffprobe 到 bin/" >&2
   exit 1
 else
-  # Linux 只有 johnvansickle 一个源，失败则提示手动下载
-  url="$(pick_urls)"
-  t="$(mktemp /tmp/ff_XXXX.tar.xz)"
-  if fetch "$url" "$t"; then
-    untar_linux "$t"; rm -f "$t"; ok
-  else
+  # Linux：逐个试源（BtbN zip 优先，johnvansickle tar.xz 回退），按扩展名解压
+  while read -r url; do
+    case "$url" in
+      *.zip)  t="$(mktemp /tmp/ff_XXXX.zip)";  unpack=zip ;;
+      *)      t="$(mktemp /tmp/ff_XXXX.tar.xz)"; unpack=tar ;;
+    esac
+    if fetch "$url" "$t"; then
+      if [ "$unpack" = zip ]; then
+        unzip_pair "$t" ffmpeg; unzip_pair "$t" ffprobe
+      else
+        untar_linux "$t"
+      fi
+      rm -f "$t"; ok; exit 0
+    fi
     rm -f "$t"
-    echo "ERROR: 下载失败，请从 $url 手动下载，解压后把 ffmpeg/ffprobe 放入 bin/" >&2
-    exit 1
-  fi
+    echo "该源失败，尝试下一个…"
+  done < <(pick_urls)
+  echo "ERROR: 所有下载源均失败，请手动放置 ffmpeg/ffprobe 到 bin/" >&2
+  exit 1
 fi

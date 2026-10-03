@@ -32,6 +32,8 @@ jobs:
           Copy-Item ffb/*/bin/ffmpeg.exe bin/ffmpeg.exe
           Copy-Item ffb/*/bin/ffprobe.exe bin/ffprobe.exe
           bin/ffmpeg.exe -version | Select-Object -First 1
+      - name: 安装依赖
+        run: python -m pip install -q -r requirements.txt pyinstaller
       - name: 测试
         run: |
           python tests/test_modes.py

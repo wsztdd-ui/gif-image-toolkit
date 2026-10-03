@@ -74,7 +74,9 @@ def probe(path: str) -> dict:
     p = _run([ffprobe, "-v", "error", "-print_format", "json",
               "-show_format", "-show_streams", path])
     if p.returncode != 0:
-        raise FfmpegError("读取媒体信息失败: " + (p.stderr or "").strip()[-500:])
+        detail = (p.stderr or "").strip()[-500:] or (p.stdout or "").strip()[-200:]
+        raise FfmpegError(f"读取媒体信息失败（ffprobe 退出码 {p.returncode}）："
+                          + (detail or "无错误输出"))
     try:
         data = json.loads(p.stdout)
     except json.JSONDecodeError as e:
