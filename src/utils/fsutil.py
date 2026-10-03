@@ -1,6 +1,7 @@
 """文件路径辅助。"""
 import os
 import subprocess
+import sys
 
 
 def unique_path(dst: str) -> str:
@@ -15,10 +16,21 @@ def unique_path(dst: str) -> str:
 
 
 def open_in_explorer(path: str):
-    """在资源管理器中打开目录（或选中文件）。"""
+    """在系统文件管理器中打开目录（或选中文件）。Windows 为主，
+    macOS/Linux 源码运行时回退到 Finder / 文件管理器。"""
     if not path:
         return
-    if os.path.isfile(path):
-        subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
+    path = os.path.normpath(path)
+    if sys.platform == "win32":
+        if os.path.isfile(path):
+            subprocess.Popen(["explorer", "/select,", path])
+        else:
+            os.startfile(path)  # noqa: S606
+    elif sys.platform == "darwin":
+        if os.path.isfile(path):
+            subprocess.Popen(["open", "-R", path])      # Finder 中显示该文件
+        else:
+            subprocess.Popen(["open", path])
     else:
-        os.startfile(os.path.normpath(path))  # noqa: S606
+        subprocess.Popen(["xdg-open", os.path.dirname(path)
+                          if os.path.isfile(path) else path])  # noqa: S606

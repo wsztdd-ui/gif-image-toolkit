@@ -36,7 +36,7 @@ Windows 绿色免安装小工具，做两件事：
 依赖：Python 3.10+（3.12 实测）
 
 ```bat
-git clone https://github.com/<你的用户名>/gif-image-toolkit.git
+git clone https://github.com/wsztdd-ui/gif-image-toolkit.git
 cd gif-image-toolkit
 python -m pip install -r requirements.txt
 powershell -ExecutionPolicy Bypass -File tools\install_ffmpeg.ps1

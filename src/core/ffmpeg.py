@@ -116,9 +116,12 @@ _TIME_RE = re.compile(r"^out_time=(\d+):(\d+):(\d+(?:\.\d+)?)")
 def run_with_progress(args, duration, progress=None, cancel_check=None):
     """执行 ffmpeg 并从 -progress pipe:1 解析 out_time= 汇报 0~1 进度。
 
-    cancel_check 每读一行进度调用一次，返回 True 时杀死子进程并抛 FfmpegCancelled；
+    进度行由独立线程读取（ffmpeg 卡住不输出时主流程不被读阻塞）；
+    主流程每 0.2s 轮询一次 cancel_check，取消立即杀死子进程并抛 FfmpegCancelled；
     任何异常退出路径都会杀掉残留的 ffmpeg 进程，避免孤儿进程。
     """
+    import threading
+
     ffmpeg = tool_path("ffmpeg")
     if not ffmpeg:
         raise FfmpegError("未找到 ffmpeg")
@@ -128,24 +131,39 @@ def run_with_progress(args, duration, progress=None, cancel_check=None):
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errf, text=True,
                                 encoding="utf-8", errors="replace",
                                 creationflags=CREATE_NO_WINDOW)
-        try:
+        pump_err = []
+
+        def _pump():
             last = 0.0
-            for line in proc.stdout:
-                if cancel_check is not None and cancel_check():
-                    raise FfmpegCancelled("已取消")
-                m = _TIME_RE.match(line.strip())
-                if m and duration > 0 and progress:
-                    t = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
-                    last = max(last, t / duration)
-                    progress(min(0.999, last))
-            proc.wait()
-        except BaseException:
+            try:
+                for line in proc.stdout:
+                    m = _TIME_RE.match(line.strip())
+                    if m and duration > 0 and progress:
+                        t = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
+                        last = max(last, t / duration)
+                        progress(min(0.999, last))
+            except BaseException as e:  # progress 回调抛出的取消等异常，主流程统一处理
+                pump_err.append(e)
+
+        reader = threading.Thread(target=_pump, daemon=True)
+        reader.start()
+        try:
+            while True:
+                try:
+                    proc.wait(timeout=0.2)
+                    break
+                except subprocess.TimeoutExpired:
+                    if cancel_check is not None and cancel_check():
+                        raise FfmpegCancelled("已取消")
+        finally:
             if proc.poll() is None:
                 proc.kill()
                 proc.wait()
-            raise
+            reader.join(timeout=1)
         errf.seek(0)
         stderr = errf.read() or ""
+    if pump_err:
+        raise pump_err[0]
     if proc.returncode != 0:
         raise FfmpegError("ffmpeg 执行失败: " + stderr.strip()[-800:])
 
@@ -256,6 +274,8 @@ def output_dims(src_w, src_h, crop, width):
     """计算输出分辨率：width=0 表示保持原始宽度；高度自适应保留奇数。"""
     w0 = crop[2] if crop else src_w
     h0 = crop[3] if crop else src_h
+    w0 = max(1, int(w0 or 1))       # 损坏文件探不到宽高时避免除零
+    h0 = max(1, int(h0 or 1))
     w = width or w0
     h = max(1, round(h0 * w / w0))
     return int(w), int(h)

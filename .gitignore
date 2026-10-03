@@ -11,3 +11,8 @@ __pycache__/
 # ffmpeg 二进制不入库（tools\install_ffmpeg.ps1 一键获取）
 bin/ffmpeg.exe
 bin/ffprobe.exe
+
+# 本地发布产物与虚拟环境
+publish/
+publish.zip
+.venv/

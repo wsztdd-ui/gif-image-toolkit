@@ -91,6 +91,8 @@ class RangeSlider(QWidget):
         return abs(x1 - x2) <= HANDLE_R + 3
 
     def mousePressEvent(self, e):
+        if not self.isEnabled():
+            return
         x = e.position().x()
         x_lo, x_hi = self._val_to_x(self._lo), self._val_to_x(self._hi)
         if self._near(x, x_lo) and (not self._near(x, x_hi) or x <= x_hi):
@@ -112,6 +114,8 @@ class RangeSlider(QWidget):
         e.accept()
 
     def mouseMoveEvent(self, e):
+        if not self.isEnabled():
+            return
         if not self._drag:
             return
         v = self._x_to_val(e.position().x())

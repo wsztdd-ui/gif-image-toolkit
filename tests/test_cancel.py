@@ -16,9 +16,13 @@ from core.workers import GifWorker
 
 
 def ffmpeg_running():
-    out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq ffmpeg.exe"],
-                         capture_output=True).stdout.decode("gbk", errors="replace")
-    return out.lower().count("ffmpeg.exe")
+    """当前系统里存活的 ffmpeg 进程数（Windows 用 tasklist，其它用 pgrep）。"""
+    if os.name == "nt":
+        out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq ffmpeg.exe"],
+                             capture_output=True).stdout.decode("gbk", errors="replace")
+        return out.lower().count("ffmpeg.exe")
+    out = subprocess.run(["pgrep", "-x", "ffmpeg"], capture_output=True, text=True)
+    return len([p for p in out.stdout.split() if p.strip()])
 
 
 def main():
@@ -27,12 +31,14 @@ def main():
     src = os.path.join(tmp, "long.ts")
     subprocess.run(
         [ff.tool_path("ffmpeg"), "-y", "-f", "lavfi",
-         "-i", "testsrc2=size=1280x720:rate=30:duration=30",
+         "-i", "testsrc2=size=1280x720:rate=30:duration=120",
          "-c:v", "mpeg2video", "-q:v", "4", "-f", "mpegts", src],
         check=True, capture_output=True, creationflags=ff.CREATE_NO_WINDOW)
 
     out = os.path.join(tmp, "out.gif")
-    wk = GifWorker(dict(video=src, out_path=out, start=0.0, duration=30.0,
+    baseline = ffmpeg_running()     # 系统里可能本来就有别的 ffmpeg 在跑，按差值判断
+    # 120s 素材：保证在高速机器（如 Apple Silicon）上生成也远未结束，取消才能触发
+    wk = GifWorker(dict(video=src, out_path=out, start=0.0, duration=120.0,
                         crop=None, width=720, fps=12, colors=128, dither="bayer"))
     t0 = time.time()
     result = {}
@@ -55,15 +61,15 @@ def main():
         print("cancel at %.1fs" % (time.time() - t0))
         wk.cancel()
 
-    QTimer.singleShot(3000, do_cancel)
-    QTimer.singleShot(30000, app.quit)    # 兜底超时
+    QTimer.singleShot(1500, do_cancel)
+    QTimer.singleShot(60000, app.quit)    # 兜底超时
     app.exec()
 
     wk.wait(5000)
     time.sleep(1.0)                       # 给系统一点时间回收进程表
-    left = ffmpeg_running()
+    left = ffmpeg_running() - baseline
     print("result:", result)
-    print("ffmpeg processes after cancel:", left)
+    print("ffmpeg processes left after cancel (delta):", left)
     ok = result.get("msg") == "已取消" and result.get("secs", 99) < 8 and left == 0
     print("CANCEL TEST", "PASS" if ok else "FAIL")
     sys.exit(0 if ok else 1)

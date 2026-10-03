@@ -67,6 +67,10 @@ def setup_scene(app, scene_dir, disable_release=False):
 
 
 def main():
+    if os.name != "nt":
+        print("SKIP：本测试回归的是 Windows 强制文件锁（WinError 32），"
+              "macOS/Linux 上重命名打开中的文件本就允许，测试前提不成立。")
+        sys.exit(0)
     app = QApplication([])
     tmp = tempfile.mkdtemp(prefix="gifkit_save_")
 

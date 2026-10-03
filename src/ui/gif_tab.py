@@ -473,7 +473,9 @@ class GifTab(QWidget):
         gen = self._frame_gen
 
         def job():
-            out = os.path.join(tempfile.gettempdir(), f"gifkit_{os.getpid()}_frame.png")
+            # 文件名带上代数：快速调参时新旧两帧可能并发抽帧，避免写同一个文件
+            out = os.path.join(tempfile.gettempdir(),
+                               f"gifkit_{os.getpid()}_frame_{gen}.png")
             ff.extract_frame(self.video, self._start_sec(), out,
                              width=min(960, max(320, w)))
             return out
@@ -742,7 +744,11 @@ class GifTab(QWidget):
                 os.remove(self._preview_file)
             except OSError:
                 pass
-        outdir = self._resolve_outdir()
+        try:                    # 自定义目录此刻就创建并验证，保存时才不会因目录问题失败
+            self._resolve_outdir()
+        except OSError as e:
+            self._status("输出目录不可用：" + str(e), warn=True)
+            return
         tmp_dir = os.path.join(tempfile.gettempdir(), "GifKit_preview")
         os.makedirs(tmp_dir, exist_ok=True)
         target = fsutil.unique_path(os.path.join(tmp_dir, self._out_name()))
@@ -822,8 +828,9 @@ class GifTab(QWidget):
             self._status("预览产物不存在，请重新生成", warn=True)
             return
         self._back_to_edit()    # 先停掉 QMovie 释放句柄，避免 Windows 下移动文件失败
-        dst = fsutil.unique_path(os.path.join(self._resolve_outdir(), self._out_name()))
         try:
+            dst = fsutil.unique_path(os.path.join(self._resolve_outdir(),
+                                                  self._out_name()))
             install_preview(self._preview_file, dst)
         except OSError as e:
             self._status("保存失败：" + str(e), warn=True)

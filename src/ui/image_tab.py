@@ -1,7 +1,7 @@
 """「图片压缩」页：批量拖入 → 压缩/格式转换 → 前后体积对比。"""
 import os
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QFileDialog,
                                QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPushButton,
@@ -343,7 +343,8 @@ class ImageTab(QWidget):
     @staticmethod
     def _parse_size(text):
         num, unit = text.split(" ")
-        mult = {"B": 1, "KB": 1024, "MB": 1024 ** 2, "GB": 1024 ** 3}[unit]
+        mult = {"B": 1, "KB": 1024, "MB": 1024 ** 2, "GB": 1024 ** 3,
+                "TB": 1024 ** 4}[unit]
         return int(float(num) * mult)
 
     def _status(self, text, warn=False):
