@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GifKit 交互原型 — GIF截取 & 图片压缩</title>
+<style>
+  :root{
+    --bg:#10131a; --panel:#171b24; --panel2:#1d2230; --border:#2a3142;
+    --text:#e7ecf5; --muted:#93a0b4; --accent:#4f8cff; --accent2:#22d3a7; --danger:#ff5d5d;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--text); font:14px/1.6 "Microsoft YaHei UI","Segoe UI",sans-serif; padding:0 0 40px;}
+  header{display:flex; align-items:center; gap:14px; padding:14px 22px; border-bottom:1px solid var(--border); background:var(--panel); position:sticky; top:0; z-index:5;}
+  .logo{font-size:18px; font-weight:700;}
+  .logo b{color:var(--accent);}
+  .badge{font-size:11px; color:#ffd479; border:1px solid #7a6428; background:#2c250f; border-radius:20px; padding:1px 10px;}
+  .tabs{margin-left:auto; display:flex; gap:6px;}
+  .tab{cursor:pointer; border:1px solid var(--border); background:var(--panel2); color:var(--muted); padding:6px 16px; border-radius:8px; font-size:13px;}
+  .tab.active{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600;}
+  .page{display:none; max-width:1180px; margin:18px auto; padding:0 18px; gap:16px; align-items:start;}
+  .page.active{display:grid; grid-template-columns:minmax(0,1fr) 360px;}
+  @media(max-width:900px){.page.active{grid-template-columns:1fr;}}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:14px;}
+  .card h3{font-size:13px; color:var(--muted); font-weight:600; margin-bottom:10px; letter-spacing:.5px;}
+  .row{display:flex; align-items:center; gap:10px; margin:8px 0; flex-wrap:wrap;}
+  .grow{flex:1;}
+  label.lab{color:var(--muted); font-size:13px; min-width:64px;}
+  select,input[type=number],input[type=text]{background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:6px 10px; font-size:13px;}
+  input[type=range]{accent-color:var(--accent); width:100%;}
+  .btn{cursor:pointer; border:1px solid var(--border); background:var(--panel2); color:var(--text); padding:7px 14px; border-radius:8px; font-size:13px;}
+  .btn:hover{border-color:var(--accent);}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600;}
+  .btn.big{width:100%; padding:11px; font-size:15px;}
+  .btn:disabled{opacity:.45; cursor:not-allowed;}
+  .chips{display:flex; gap:6px; flex-wrap:wrap;}
+  .chip{cursor:pointer; border:1px solid var(--border); background:var(--panel2); color:var(--muted); font-size:12px; padding:4px 12px; border-radius:20px;}
+  .chip.active{background:var(--accent); border-color:var(--accent); color:#fff;}
+  /* 预览区 */
+  .drop{border:2px dashed var(--border); border-radius:12px; transition:.15s; cursor:pointer;}
+  .drop.over{border-color:var(--accent); background:rgba(79,140,255,.06);}
+  #stage{display:flex; justify-content:center; padding:10px;}
+  #frame{position:relative; overflow:hidden; border-radius:8px; background:#000; touch-action:none; user-select:none;}
+  #frame video{width:100%; height:100%; display:block;}
+  #placeholder{width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
+    background:linear-gradient(135deg,#1a2438,#12201c 60%,#241a30); color:var(--muted); font-size:13px;}
+  #placeholder .big{font-size:34px;}
+  #cropBox{position:absolute; border:2px solid #35e0ff; box-shadow:0 0 0 9999px rgba(0,0,0,.45); cursor:move; display:none;}
+  #cropBox .h{position:absolute; width:12px; height:12px; background:#35e0ff; border-radius:2px;}
+  #cropBox .h.nw{left:-7px; top:-7px; cursor:nwse-resize;} #cropBox .h.ne{right:-7px; top:-7px; cursor:nesw-resize;}
+  #cropBox .h.sw{left:-7px; bottom:-7px; cursor:nesw-resize;} #cropBox .h.se{right:-7px; bottom:-7px; cursor:nwse-resize;}
+  #cropLabel{position:absolute; left:0; top:-24px; color:#35e0ff; font-size:12px; white-space:nowrap; text-shadow:0 1px 2px #000;}
+  #emptyHint{text-align:center; color:var(--muted); padding:70px 10px;}
+  #emptyHint .big{font-size:40px;}
+  /* 时间轴 & 缩略图 */
+  #thumbs{display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;}
+  #thumbs img,#thumbs .skel{width:96px; height:54px; object-fit:cover; border-radius:6px; cursor:pointer; border:1px solid var(--border); background:#20283a; flex:none;}
+  #thumbs .cap{font-size:10px; color:var(--muted); text-align:center;}
+  .kv{display:flex; justify-content:space-between; font-size:13px; padding:2px 0;}
+  .kv span:first-child{color:var(--muted);}
+  #estimate{background:var(--panel2); border-radius:8px; padding:8px 12px; font-size:13px; color:var(--accent2);}
+  #progressWrap{display:none; margin-top:10px;}
+  #progressBar{height:8px; background:var(--panel2); border-radius:6px; overflow:hidden;}
+  #progressFill{height:100%; width:0%; background:linear-gradient(90deg,var(--accent),var(--accent2)); transition:width .1s;}
+  #genStatus{font-size:12px; color:var(--muted); margin-top:4px;}
+  #resultCard{display:none; border:1px solid var(--accent2); background:rgba(34,211,167,.08); border-radius:10px; padding:10px 14px; margin-top:10px; font-size:13px;}
+  #resultCard b{color:var(--accent2);}
+  #pvAnim{height:150px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;
+    background:linear-gradient(45deg,#16233c,#1d2c1f,#2a1c33,#16233c);background-size:300% 300%;animation:pvm 1.8s ease-in-out infinite;}
+  @keyframes pvm{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+  .warn{color:#ffd479; font-size:12px; margin-top:6px;}
+  /* 图片页 */
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th{color:var(--muted); text-align:left; font-weight:600; padding:6px 8px; border-bottom:1px solid var(--border); font-size:12px;}
+  td{padding:6px 8px; border-bottom:1px solid rgba(42,49,66,.5);}
+  .save-pos{color:var(--accent2);} .save-neg{color:var(--danger);}
+  a.dl{color:var(--accent); text-decoration:none; cursor:pointer;}
+  #toast{position:fixed; left:50%; bottom:36px; transform:translateX(-50%); background:#0c0f14ee; border:1px solid var(--accent);
+    color:var(--text); padding:9px 20px; border-radius:10px; font-size:13px; display:none; z-index:99;}
+  footer{max-width:1180px; margin:0 auto; padding:0 18px; color:var(--muted); font-size:12px;}
+  .note{font-size:12px; color:var(--muted);}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Gif<b>Kit</b></div>
+  <span class="badge">交互原型 v0.2 · 已按 2026-10-03 反馈更新</span>
+  <div class="tabs">
+    <div class="tab active" data-page="p1">🎬 视频转 GIF</div>
+    <div class="tab" data-page="p2">🖼 图片压缩</div>
+  </div>
+</header>
+
+<!-- ============ 页1：视频转GIF ============ -->
+<div class="page active" id="p1">
+  <div>
+    <div class="card drop" id="drop1">
+      <div id="emptyHint"><div class="big">🎞️</div><b>将视频或动图 GIF 拖到此处</b><br>
+        <span class="note">支持 TS / M2TS / MP4 / MKV / AVI / MOV / FLV / WebM / WMV …<br>
+        拖入动图 GIF 直接进入再压缩（正式版重设调色板，可再调宽度/帧率/颜色）<br>
+        原型提示：MP4/WebM/动图GIF 可真实预览；TS 等浏览器不支持的格式显示示意画面（正式版由 ffmpeg 抽帧）</span></div>
+      <div id="stage" style="display:none">
+        <div id="frame">
+          <video id="vid" playsinline muted style="display:none"></video>
+          <img id="gimg" alt="" style="display:none;width:100%;height:100%;object-fit:fill">
+          <div id="placeholder" style="display:none">
+            <div class="big">📼</div>
+            <div>TS 示意画面</div>
+            <div class="note">正式版此处显示 ffmpeg 按起点抽取的真实帧</div>
+          </div>
+          <div id="cropBox"><div class="h nw"></div><div class="h ne"></div><div class="h sw"></div><div class="h se"></div><div id="cropLabel"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card" id="timeCard" style="display:none">
+      <h3>截取时间</h3>
+      <div class="row"><label class="lab">起点</label><input type="range" id="startS" min="0" max="10" step="0.1" value="0"><span id="startV" style="min-width:70px;text-align:right;font-variant-numeric:tabular-nums">00:00.0</span><input type="number" id="startN" min="0" step="0.1" value="0" style="width:76px"></div>
+      <div class="row"><label class="lab">时长</label><input type="range" id="durS" min="0.1" max="15" step="0.1" value="5"><span id="durV" style="min-width:70px;text-align:right;font-variant-numeric:tabular-nums">00:05.0</span><input type="number" id="durN" min="0.1" step="0.1" value="5" style="width:76px"><button class="btn" id="fullBtn">选整段</button></div>
+      <div class="note" id="durNote"></div>
+      <div id="thumbs"></div>
+      <div class="note" style="margin-top:6px">点击缩略图 = 设为起点（正式版由 ffmpeg 抽取 8 张缩略图）</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card" id="infoCard" style="display:none"><h3>源文件信息</h3><div id="infoBody"></div></div>
+    <div class="card" id="cropCard" style="display:none">
+      <h3>裁剪范围（在预览图上拖拽框选）</h3>
+      <div class="row chips" id="ratioChips">
+        <span class="chip active" data-r="">自由</span><span class="chip" data-r="1.7778">16:9</span><span class="chip" data-r="1">1:1</span><span class="chip" data-r="0.5625">9:16</span><span class="chip" data-r="1.3333">4:3</span>
+      </div>
+      <div class="row"><span id="cropInfo" class="note">全画面</span><button class="btn" id="cropReset" style="margin-left:auto">重置</button></div>
+    </div>
+    <div class="card" id="outCard" style="display:none">
+      <h3>输出设置</h3>
+      <div class="row"><label class="lab">质量预设</label>
+        <div class="chips" id="presetChips">
+          <span class="chip" data-p="hq">高质量</span><span class="chip active" data-p="mid">均衡</span><span class="chip" data-p="lq">高压缩</span>
+        </div></div>
+      <div class="row"><label class="lab">宽度</label><select id="widthSel">
+        <option value="720" selected>720（默认 · 16:9 源即 720×405）</option><option value="0">原始宽度</option><option value="640">640</option><option value="480">480</option><option value="360">360</option><option value="240">240</option><option value="c">自定义…</option></select>
+        <input type="number" id="widthN" value="720" min="64" max="1920" style="width:76px; display:none"></div>
+      <div class="row"><label class="lab">帧率</label><input type="number" id="fpsN" value="12" min="3" max="30" step="1" style="width:66px"><span class="note">自由输入 3–30</span>
+        <label class="lab" style="min-width:52px">颜色数</label><select id="colorsSel"><option>256</option><option selected>128</option><option>64</option><option>32</option></select>
+        <label class="lab" style="min-width:52px">抖动</label><select id="ditherSel"><option value="bayer" selected>Bayer 体积小</option><option value="floyd">Floyd 更平滑</option><option value="none">无</option></select></div>
+      <div id="estimate">—</div>
+      <div class="row" style="margin-top:10px"><label class="lab">输出到</label>
+        <label><input type="radio" name="od" checked> 源文件目录</label>
+        <label><input type="radio" name="od"> 自定义…</label></div>
+      <div class="row"><label class="lab">文件后缀</label><input type="text" id="suffix" value="_gif" style="width:90px"><span class="note">源文件名 + 后缀 + .gif</span></div>
+    </div>
+    <div class="card" id="genCard" style="display:none">
+      <button class="btn primary big" id="genBtn">生成预览</button>
+      <div id="progressWrap"><div id="progressBar"><div id="progressFill"></div></div><div id="genStatus">准备中…</div></div>
+      <div id="previewCard" style="display:none">
+        <div id="pvAnim">▶ GIF 预览（模拟动画）</div>
+        <div id="pvMeta" class="note" style="margin:8px 0"></div>
+        <div class="row"><button class="btn primary" id="saveBtn" style="flex:1">保存到输出目录</button><button class="btn" id="discardBtn">重新调整</button></div>
+      </div>
+      <div id="resultCard"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 页2：图片压缩 ============ -->
+<div class="page" id="p2">
+  <div>
+    <div class="card drop" id="drop2">
+      <div id="imgEmpty"><div style="text-align:center;color:var(--muted);padding:34px 10px"><div style="font-size:36px">🖼️</div><b>将图片拖到此处</b><br>
+        <span class="note">支持 JPG / PNG / WebP / BMP / GIF(静态) / TIFF，可多选批量</span></div></div>
+      <div id="imgTableWrap" style="display:none">
+        <table><thead><tr><th>文件</th><th>原大小</th><th>压缩后</th><th>节省</th><th>操作</th></tr></thead>
+        <tbody id="imgRows"></tbody></table>
+        <div class="row"><button class="btn" id="imgAdd">添加图片</button><button class="btn" id="imgClear" style="margin-left:auto">清空列表</button></div>
+      </div>
+      <div class="note" id="imgSummary" style="margin-top:8px"></div>
+    </div>
+  </div>
+  <div>
+    <div class="card">
+      <h3>压缩设置</h3>
+      <div class="row"><label class="lab">输出格式</label><select id="fmtSel">
+        <option value="keep" selected>保持原格式</option><option value="jpeg">JPEG</option><option value="webp">WebP（更小）</option><option value="png">PNG</option></select></div>
+      <div class="row"><label class="lab">质量 <span id="qV">80</span></label><input type="range" id="qR" min="10" max="100" value="80" class="grow"></div>
+      <div class="row"><label class="lab">最长边</label><select id="edgeSel">
+        <option value="0" selected>保持原始尺寸</option><option value="2560">2560</option><option value="1920">1920</option><option value="1280">1280</option><option value="800">800</option></select></div>
+      <div class="row"><label><input type="checkbox" id="quantChk" checked> PNG 256 色量化（截图类推荐）</label></div>
+      <div class="row"><label class="lab">输出到</label><label><input type="radio" name="od2" checked> 源文件目录</label><label><input type="radio" name="od2"> 自定义…</label></div>
+      <div class="row"><label class="lab">文件后缀</label><input type="text" value="_c" style="width:90px"><span class="note">自动跳过反而变大的文件</span></div>
+    </div>
+    <div class="card"><button class="btn primary big" id="imgGo">开始压缩</button>
+      <div class="note" style="margin-top:8px">原型中压缩由浏览器 Canvas 真实执行（JPEG/WebP 与正式版算法不同，仅供参考体积感受）；正式版使用 Pillow：JPEG/WebP 质量压缩 + PNG 256 色量化，效果更好。</div></div>
+  </div>
+</div>
+
+<footer>交互原型 · 用于确认界面布局与操作流程 · "生成预览 → 保存"为两段式流程 · 支持拖入动图 GIF 再压缩 · GIF 生成在原型中为模拟演示 · 正式版：PySide6 桌面程序 + 内置 ffmpeg，绿色免安装单 exe</footer>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
+const SW=1280, SH=720;                       // 原型虚拟源分辨率（正式版为真实视频分辨率）
+const state={file:null,name:"",dur:0,sw:SW,sh:SH,playable:false,gifMode:false,
+  crop:{x:.1,y:.1,w:.8,h:.8},ratio:null,busy:false};
+let lastEst=0;
+
+function toast(m){const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",1900);}
+function fmt(s){s=Math.max(0,s||0);const m=Math.floor(s/60);return String(m).padStart(2,"0")+":"+(s-m*60).toFixed(1).padStart(4,"0");}
+function size(n){if(n<1024)return n+" B";if(n<1048576)return (n/1024).toFixed(1)+" KB";if(n<1073741824)return (n/1048576).toFixed(2)+" MB";return (n/1073741824).toFixed(2)+" GB";}
+const VEXT=new Set(["ts","m2ts","mts","mp4","m4v","mkv","avi","mov","flv","webm","wmv","mpg","mpeg","3gp"]);
+const IEXT=new Set(["jpg","jpeg","png","webp","bmp","gif","tif","tiff"]);
+
+/* ---------- 页签 ---------- */
+$$(".tab").forEach(t=>t.onclick=()=>{
+  $$(".tab").forEach(x=>x.classList.toggle("active",x===t));
+  $$(".page").forEach(p=>p.classList.toggle("active",p.id===t.dataset.page));
+});
+
+/* ---------- 拖放 ---------- */
+function wireDrop(el,accept){
+  el.addEventListener("dragover",e=>{e.preventDefault();el.classList.add("over");});
+  el.addEventListener("dragleave",()=>el.classList.remove("over"));
+  el.addEventListener("drop",e=>{
+    e.preventDefault();el.classList.remove("over");
+    for(const f of e.dataTransfer.files){
+      const ext=f.name.split(".").pop().toLowerCase();
+      if(accept==="video"&&ext==="gif"){loadGifFile(f);return;}       /* 动图 GIF → 再压缩 */
+      if(accept==="video"&&VEXT.has(ext)){loadVideo(f);return;}
+      if(accept==="image"&&IEXT.has(ext)){addImage(f);continue;}
+      if(accept==="video"&&IEXT.has(ext)){toast("这是图片，已帮你切到「图片压缩」页");$$(".tab")[1].click();addImage(f);continue;}
+      if(accept==="image"&&VEXT.has(ext)){toast("这是视频，已帮你切到「视频转 GIF」页");$$(".tab")[0].click();loadVideo(f);return;}
+    }
+  });
+}
+wireDrop($("#drop1"),"video"); wireDrop($("#drop2"),"image");
+$("#drop1").addEventListener("click",e=>{if(!state.file&&!state.busy)toast("原型：正式版此处打开文件选择框");});
+
+/* ---------- 视频载入 ---------- */
+function loadVideo(f){
+  if(state.busy)return;
+  state.gifMode=false;
+  state.file=URL.createObjectURL(f); state.name=f.name.replace(/\.[^.]+$/,"");
+  $("#emptyHint").style.display="none"; $("#stage").style.display="flex";
+  $("#timeCard").style.display="block";$("#infoCard").style.display="block";
+  $("#cropCard").style.display="block";$("#outCard").style.display="block";$("#genCard").style.display="block";
+  $("#resultCard").style.display="none";$("#previewCard").style.display="none";$("#progressWrap").style.display="none";
+  const ext=f.name.split(".").pop().toLowerCase();
+  const vid=$("#vid"),ph=$("#placeholder"),gimg=$("#gimg");
+  vid.style.display="none";ph.style.display="none";gimg.style.display="none";
+  state.playable=["mp4","m4v","webm","mov"].includes(ext);
+  if(state.playable){
+    vid.src=state.file; vid.style.display="block";
+    vid.onloadedmetadata=()=>{ state.dur=vid.duration||0; state.sw=vid.videoWidth||SW; state.sh=vid.videoHeight||SH;
+      afterMeta(f,ext,false); };
+    vid.onerror=()=>{ state.playable=false; ph.style.display="flex"; state.dur=0; afterMeta(f,ext,true); };
+  }else{ ph.style.display="flex"; state.dur=0; afterMeta(f,ext,true); }
+}
+/* 动图 GIF 再压缩：浏览器可直接播放 GIF，抽帧/时长正式版由 ffprobe 读取 */
+function loadGifFile(f){
+  if(state.busy)return;
+  state.gifMode=true;
+  state.file=URL.createObjectURL(f); state.name=f.name.replace(/\.[^.]+$/,"");
+  $("#emptyHint").style.display="none"; $("#stage").style.display="flex";
+  $("#timeCard").style.display="block";$("#infoCard").style.display="block";
+  $("#cropCard").style.display="block";$("#outCard").style.display="block";$("#genCard").style.display="block";
+  $("#resultCard").style.display="none";$("#previewCard").style.display="none";$("#progressWrap").style.display="none";
+  const vid=$("#vid"),ph=$("#placeholder"),gimg=$("#gimg");
+  vid.style.display="none";ph.style.display="none";gimg.style.display="block";
+  gimg.src=state.file;
+  gimg.onload=()=>{ state.sw=gimg.naturalWidth||SW; state.sh=gimg.naturalHeight||SH;
+    state.dur=0; afterMeta(f,"gif",true); };
+  gimg.onerror=()=>{ state.sw=SW; state.sh=SH; state.dur=0; afterMeta(f,"gif",true); };
+}
+function afterMeta(f,ext,fallback){
+  layoutFrame(); resetCrop(); initTime(); buildThumbs(); renderInfo(f,ext,fallback); updateEst();
+}
+function renderInfo(f,ext,fallback){
+  $("#infoBody").innerHTML=
+    `<div class="kv"><span>文件</span><span>${f.name}</span></div>
+     <div class="kv"><span>大小</span><span>${size(f.size)}</span></div>
+     <div class="kv"><span>分辨率</span><span>${state.sw} × ${state.sh}</span></div>
+     <div class="kv"><span>时长</span><span>${state.dur?fmt(state.dur):"未知（正式版由 ffprobe 读取）"}</span></div>
+     <div class="kv"><span>编码</span><span>${state.gifMode?"GIF（动图再压缩）":(fallback?ext+"（示意）":ext)}</span></div>`;
+}
+/* 预览框尺寸=媒体比例 */
+function layoutFrame(){
+  const frame=$("#frame"),stage=$("#stage");
+  const availW=stage.clientWidth-20, cap=430;
+  const ar=state.sw/state.sh;
+  let w=availW, h=w/ar;
+  if(h>cap){h=cap;w=h*ar;}
+  frame.style.width=w+"px"; frame.style.height=h+"px";
+  frame._ar=ar; frame._w=w; frame._h=h;
+  drawCrop();
+}
+window.addEventListener("resize",()=>{if(state.file)layoutFrame();});
+
+/* ---------- 时间 ---------- */
+function initTime(){
+  const known=state.dur>0;
+  ["#startS","#durS"].forEach(s=>$(s).disabled=!known);
+  $("#durNote").textContent=known?"":(state.gifMode
+    ?"动图的帧数/时长正式版由 ffprobe 读取；右侧时长输入用于体积估算，预览以实际生成为准。"
+    :"此格式浏览器无法读取时长，原型中时间控件禁用；正式版由 ffprobe 直接读取（含 TS）。");
+  if(known){
+    const d=Math.min(5,state.dur);
+    $("#startS").max=state.dur; $("#startS").value=0; $("#startN").value=0;
+    $("#durS").max=Math.min(30,state.dur); $("#durS").value=d;
+    $("#durN").max=$("#durS").max; $("#durN").value=d;
+  }
+  syncTimeUI();
+}
+function syncTimeUI(){
+  const st=parseFloat($("#startS").value)||0, du=parseFloat($("#durS").value)||0;
+  $("#startV").textContent=fmt(st); $("#durV").textContent=fmt(du);
+  updateEst();
+}
+function bindPair(range,num,onChange){
+  range.addEventListener("input",()=>{num.value=range.value;onChange();});
+  num.addEventListener("change",()=>{range.value=Math.min(Math.max(+num.value||0,+range.min),+range.max);num.value=range.value;onChange();});
+}
+bindPair($("#startS"),$("#startN"),()=>{if(state.playable)$("#vid").currentTime=+$("#startS").value;syncTimeUI();});
+bindPair($("#durS"),$("#durN"),syncTimeUI);
+$("#fullBtn").onclick=()=>{if(!state.dur)return;$("#startS").value=0;$("#startN").value=0;
+  $("#durS").value=Math.min(30,state.dur);$("#durN").value=$("#durS").value;
+  if(state.playable)$("#vid").currentTime=0;syncTimeUI();};
+
+/* 缩略图 */
+function buildThumbs(){
+  const box=$("#thumbs"); box.innerHTML="";
+  const N=8;
+  if(!state.playable||!state.dur){for(let i=0;i<N;i++){const d=document.createElement("div");d.className="skel";box.appendChild(d);}return;}
+  const vid=$("#vid"),c=document.createElement("canvas");c.width=96;c.height=54;
+  const ctx=c.getContext("2d");let i=0;
+  const next=()=>{
+    if(i>=N){vid.currentTime=+$("#startS").value;return;}
+    const t=state.dur*(i+.5)/N;
+    const old=vid.onseeked;
+    const to=setTimeout(()=>{vid.onseeked=old;next();},2500);
+    vid.onseeked=()=>{vid.onseeked=old;clearTimeout(to);
+      try{ctx.drawImage(vid,0,0,96,54);
+        const wrap=document.createElement("div");
+        const img=document.createElement("img");img.src=c.toDataURL("image/jpeg",.7);
+        img.title="点击设为起点："+fmt(t);img.onclick=()=>{$("#startS").value=t;$("#startN").value=t;$("#startS").dispatchEvent(new Event("input"));};
+        const cap=document.createElement("div");cap.className="cap";cap.textContent=fmt(t);
+        wrap.appendChild(img);wrap.appendChild(cap);box.appendChild(wrap);}catch(e){}
+      next();};
+    vid.currentTime=t;
+  };next();
+}
+
+/* ---------- 裁剪 ---------- */
+function resetCrop(){state.crop={x:.1,y:.1,w:.8,h:.8};applyRatioToCrop();drawCrop();updateCropInfo();}
+function applyRatioToCrop(){
+  const r=state.ratio,ar=$("#frame")._ar||16/9;
+  if(r){state.crop.h=state.crop.w*ar/r;}
+  state.crop.w=Math.min(state.crop.w,1);state.crop.h=Math.min(state.crop.h,1);
+  state.crop.x=Math.min(state.crop.x,1-state.crop.w);state.crop.y=Math.min(state.crop.y,1-state.crop.h);
+}
+function drawCrop(){
+  const c=state.crop,b=$("#cropBox");
+  if(!state.file){b.style.display="none";return;}
+  b.style.display="block";
+  b.style.left=(c.x*100)+"%";b.style.top=(c.y*100)+"%";
+  b.style.width=(c.w*100)+"%";b.style.height=(c.h*100)+"%";
+  const sw=Math.round(c.w*state.sw),sh=Math.round(c.h*state.sh);
+  $("#cropLabel").textContent=sw+" × "+sh+" px";
+}
+function updateCropInfo(){
+  const c=state.crop;
+  $("#cropInfo").textContent=(c.w>=.999&&c.h>=.999)?"全画面":
+    `选区：x=${Math.round(c.x*state.sw)}, y=${Math.round(c.y*state.sh)}, ${Math.round(c.w*state.sw)}×${Math.round(c.h*state.sh)} px`;
+}
+$$("#ratioChips .chip").forEach(ch=>ch.onclick=()=>{
+  $$("#ratioChips .chip").forEach(x=>x.classList.toggle("active",x===ch));
+  state.ratio=ch.dataset.r?+ch.dataset.r:null;
+  applyRatioToCrop();drawCrop();updateCropInfo();updateEst();
+});
+$("#cropReset").onclick=resetCrop;
+
+(function cropMouse(){
+  const frame=$("#frame"),box=$("#cropBox");let mode=null,anchor=null,down=null;
+  const fr=e=>{const r=frame.getBoundingClientRect();
+    return{x:Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),y:Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))};};
+  const clampCrop=c=>{c.w=Math.min(Math.max(c.w,.04),1);c.h=Math.min(Math.max(c.h,.04),1);
+    c.x=Math.min(Math.max(c.x,0),1-c.w);c.y=Math.min(Math.max(c.y,0),1-c.h);return c;};
+  box.addEventListener("pointerdown",e=>{if(!state.file)return;e.preventDefault();
+    const h=e.target.classList.contains("h");
+    const p=fr(e);
+    if(h){mode=e.target.classList.contains("nw")?"nw":e.target.classList.contains("ne")?"ne":e.target.classList.contains("sw")?"sw":"se";
+      const c=state.crop;anchor={x:mode.includes("w")?c.x+c.w:c.x, y:mode.includes("n")?c.y+c.h:c.y};}
+    else{mode="move";down={x:p.x-c.x,y:p.y-c.y};}
+    box.setPointerCapture(e.pointerId);});
+  frame.addEventListener("pointerdown",e=>{if(!state.file||box.contains(e.target))return;
+    mode="draw";anchor=fr(e);state.crop={x:anchor.x,y:anchor.y,w:.001,h:.001};box.setPointerCapture(e.pointerId);e.preventDefault();});
+  window.addEventListener("pointermove",e=>{
+    if(!mode)return;const p=fr(e),c=state.crop,ar=frame._ar||16/9;
+    if(mode==="move"){c.x=Math.min(Math.max(p.x-down.x,0),1-c.w);c.y=Math.min(Math.max(p.y-down.y,0),1-c.h);}
+    else if(mode==="draw"||mode.startsWith("n")||mode.startsWith("s")){
+      let x1=anchor.x,y1=anchor.y,x2=p.x,y2=p.y;
+      let w=Math.abs(x2-x1),h=Math.abs(y2-y1);
+      if(state.ratio){h=w*ar/state.ratio;h=Math.min(h,1);w=h*state.ratio/ar;}
+      w=Math.min(w,1);h=Math.min(h,1);
+      c.w=w;c.h=h;c.x=x2>=x1?x1:Math.max(0,x1-w);c.y=y2>=y1?y1:Math.max(0,y1-h);
+      clampCrop(c);
+    }
+    drawCrop();
+  });
+  window.addEventListener("pointerup",()=>{if(mode){mode=null;updateCropInfo();updateEst();}});
+})();
+
+/* ---------- 输出参数 ---------- */
+const PRESET={hq:{fps:"15",colors:"256",dither:"floyd"},mid:{fps:"12",colors:"128",dither:"bayer"},lq:{fps:"8",colors:"64",dither:"none"}};
+$$("#presetChips .chip").forEach(ch=>ch.onclick=()=>{
+  $$("#presetChips .chip").forEach(x=>x.classList.toggle("active",x===ch));
+  const p=PRESET[ch.dataset.p];$("#fpsN").value=p.fps;$("#colorsSel").value=p.colors;$("#ditherSel").value=p.dither;updateEst();
+});
+function presetSync(){
+  $$("#presetChips .chip").forEach(x=>x.classList.remove("active"));
+  for(const k in PRESET){const p=PRESET[k];
+    if(p.fps===$("#fpsN").value&&p.colors===$("#colorsSel").value&&p.dither===$("#ditherSel").value)
+      {$$("#presetChips .chip").forEach(x=>x.classList.toggle("active",x.dataset.p===k));}}
+  updateEst();}
+["#colorsSel","#ditherSel"].forEach(s=>$(s).addEventListener("change",presetSync));
+$("#fpsN").addEventListener("input",presetSync);
+$("#widthSel").addEventListener("change",()=>{const c=$("#widthSel").value;
+  $("#widthN").style.display=c==="c"?"inline-block":"none";updateEst();});
+$("#widthN").addEventListener("input",updateEst);
+
+function outDims(){
+  const c=state.crop;
+  const w0=Math.max(2,Math.round(c.w*state.sw)),h0=Math.max(2,Math.round(c.h*state.sh));
+  const ws=$("#widthSel").value;
+  const outW=ws==="c"?(+$("#widthN").value||720):(ws==="0"?w0:+ws);
+  const outH=Math.round(h0*outW/w0);   /* GIF 无偶数限制，720 宽 16:9 源精确到 405 */
+  return[outW,outH,w0,h0];
+}
+function updateEst(){
+  if(!state.file){$("#estimate").textContent="—";lastEst=0;return;}
+  const[outW,outH]=outDims();
+  const fps=Math.min(30,Math.max(3,+$("#fpsN").value||12));
+  const colors=+$("#colorsSel").value,dither=$("#ditherSel").value;
+  const dur=parseFloat($("#durS").value)||0;
+  const base={bayer:.10,floyd:.13,none:.08}[dither];
+  const cf=.65+.35*(colors/256);
+  const bytes=outW*outH*fps*dur*base*cf;
+  lastEst=bytes;
+  $("#estimate").innerHTML=`输出 <b>${outW}×${outH}</b> · ${fps}fps × ${dur.toFixed(1)}s · ${colors}色 ≈ <b>${size(bytes)}</b>（粗略估算，以实际生成为准）`;
+}
+
+/* ---------- 生成预览 → 保存（两段式，模拟） ---------- */
+$("#genBtn").onclick=()=>{
+  if(!state.file)return toast("请先拖入视频或动图 GIF");
+  if(state.busy)return;
+  state.busy=true;$("#genBtn").disabled=true;
+  $("#resultCard").style.display="none";$("#previewCard").style.display="none";
+  $("#progressWrap").style.display="block";
+  const fill=$("#progressFill"),st=$("#genStatus");let p=0;
+  const iv=setInterval(()=>{
+    p+=Math.random()*9+3;if(p>=100){p=100;clearInterval(iv);done();}
+    fill.style.width=p+"%";
+    st.textContent=p<45?`第一遍：分析调色板 ${Math.round(p/45*100)}%`:`第二遍：生成 GIF 帧 ${Math.round((p-45)/55*100)}%`;
+  },130);
+  function done(){
+    state.busy=false;$("#genBtn").disabled=false;
+    $("#progressWrap").style.display="none";
+    const[outW,outH]=outDims();
+    const dur=parseFloat($("#durS").value)||0;
+    $("#pvMeta").textContent=`${state.name}${$("#suffix").value||""}.gif · ${outW}×${outH} · ${dur.toFixed(1)}s · 实际体积 ${size(lastEst)}（原型以模拟动画示意，正式版此处内嵌循环播放生成的 GIF，预览体积即最终体积）`;
+    $("#previewCard").style.display="block";
+  }
+};
+$("#saveBtn").onclick=()=>{
+  $("#previewCard").style.display="none";
+  $("#resultCard").style.display="block";
+  $("#resultCard").innerHTML=`<b>✔ 已保存（模拟）</b>　${state.name}${$("#suffix").value||""}.gif<br>
+    <span class="note">输出位置：源目录 \\ ${state.name}${$("#suffix").value||""}.gif（正式版保存临时预览产物，秒级完成，可一键打开目录）</span>`;
+};
+$("#discardBtn").onclick=()=>{$("#previewCard").style.display="none";};
+
+/* ---------- 图片压缩（真实执行） ---------- */
+const imgFiles=[];
+function addImage(f){
+  if(imgFiles.some(x=>x._ref===f))return;
+  const rec={_ref:f,name:f.name,size:f.size,result:null,url:null};
+  imgFiles.push(rec);renderImg();
+}
+function renderImg(){
+  const has=imgFiles.length>0;
+  $("#imgEmpty").style.display=has?"none":"block";
+  $("#imgTableWrap").style.display=has?"block":"none";
+  const tb=$("#imgRows");tb.innerHTML="";
+  let saved=0;
+  imgFiles.forEach((r,i)=>{
+    const tr=document.createElement("tr");
+    let cells=`<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.name}">${r.name}</td><td>${size(r.size)}</td>`;
+    if(r.result){const s=r.result.saving;
+      cells+=`<td>${size(r.result.size)}</td><td class="${s>=0?"save-pos":"save-neg"}">${s>=0?"-":"+"}${Math.abs(s).toFixed(1)}%</td>
+      <td><a class="dl" data-i="${i}">⬇ 下载</a></td>`;
+      saved+=r.result.size-r.size;}
+    else if(r.result===false)cells+=`<td>—</td><td class="save-neg">失败</td><td></td>`;
+    else cells+=`<td>—</td><td>—</td><td></td>`;
+    tr.innerHTML=cells;tb.appendChild(tr);
+  });
+  tb.querySelectorAll("a.dl").forEach(a=>a.onclick=()=>{const r=imgFiles[+a.dataset.i];if(r.url){const x=document.createElement("a");x.href=r.url;x.download=r.result.name;x.click();}});
+  $("#imgSummary").textContent=has?`共 ${imgFiles.length} 个文件`+(saved>0?`，已节省 ${size(-saved)}`:""):"";
+}
+$("#imgAdd").onclick=()=>toast("原型：正式版此处打开多选文件框");
+$("#imgClear").onclick=()=>{imgFiles.length=0;renderImg();};
+$("#qR").addEventListener("input",()=>$("#qV").textContent=$("#qR").value);
+$("#imgGo").onclick=async()=>{
+  if(!imgFiles.length)return toast("请先添加图片");
+  const fmtv=$("#fmtSel").value,q=(+$("#qR").value)/100,edge=+$("#edgeSel").value,quant=$("#quantChk").checked;
+  $("#imgGo").disabled=true;
+  for(const r of imgFiles){
+    r.result=null;try{
+      const bmp=await createImageBitmap(r._ref);
+      let w=bmp.width,h=bmp.height;
+      if(edge&&Math.max(w,h)>edge){const k=edge/Math.max(w,h);w=Math.round(w*k);h=Math.round(h*k);}
+      const cv=document.createElement("canvas");cv.width=w;cv.height=h;
+      cv.getContext("2d").drawImage(bmp,0,0,w,h);
+      let mime="image/jpeg",ext="jpg",quality=q;
+      if(fmtv==="webp"){mime="image/webp";ext="webp";}
+      else if(fmtv==="png"){mime="image/png";ext="png";quality=undefined;}
+      else if(fmtv==="keep"){const oe=r.name.split(".").pop().toLowerCase();
+        if(oe==="png"){mime="image/png";ext="png";quality=undefined;}
+        else if(oe==="webp"){mime="image/webp";ext="webp";}
+        else{mime="image/jpeg";ext="jpg";}}
+      const blob=await new Promise(res=>cv.toBlob(res,mime,quality));
+      if(!blob)throw new Error("浏览器不支持该编码");
+      const name=r.name.replace(/\.[^.]+$/,"")+"_c."+ext;
+      r.result={size:blob.size,saving:(1-blob.size/r.size)*100,name};
+      if(r.url)URL.revokeObjectURL(r.url);
+      r.url=URL.createObjectURL(blob);
+      if(ext==="png")toast("提示：PNG 走浏览器无损编码，正式版用 256 色量化效果更好");
+    }catch(err){r.result=false;}
+    renderImg();
+  }
+  $("#imgGo").disabled=false;
+};
+</script>
+</body>
+</html>

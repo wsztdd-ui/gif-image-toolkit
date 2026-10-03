@@ -1,0 +1,13 @@
+# 构建产物
+dist/
+build/work/
+build/ui_preview_*.png
+
+# 运行时生成
+config.json
+__pycache__/
+*.pyc
+
+# ffmpeg 二进制不入库（tools\install_ffmpeg.ps1 一键获取）
+bin/ffmpeg.exe
+bin/ffprobe.exe
