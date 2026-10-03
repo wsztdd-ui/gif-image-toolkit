@@ -158,6 +158,6 @@ jobs:
           `xattr -cr /Applications/GifKit.app`。设置保存位置：Windows 在 exe 同目录，
           macOS 在「资源库/Application Support/GifKit」，Linux 在 AppImage 同目录。
           EOF
-          gh release create "${GITHUB_REF_NAME}" rel/GifKit-* \
+          gh release create "${GITHUB_REF_NAME}" rel/GifKit-* -R "$GITHUB_REPOSITORY" \
             --title "GifKit ${GITHUB_REF_NAME} — 视频截取 GIF & 图片压缩（全平台绿色版）" \
             --notes-file notes.md
