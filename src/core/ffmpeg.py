@@ -65,8 +65,12 @@ def available():
 
 
 def _run(args, timeout=60):
-    return subprocess.run(args, capture_output=True, text=True, encoding="utf-8",
-                          errors="replace", creationflags=CREATE_NO_WINDOW, timeout=timeout)
+    try:
+        return subprocess.run(args, capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", creationflags=CREATE_NO_WINDOW,
+                              timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise FfmpegError(f"ffmpeg/ffprobe 执行超时（{timeout}s）") from None
 
 
 def probe(path: str) -> dict:
@@ -353,11 +357,14 @@ def extract_frame(video, t, out_png, width=None, deinterlace=False):
 
 def extract_frames(video, out_dir, start=0.0, duration=None, crop=None,
                    width=480, fps=12, quality="3", deinterlace=False):
-    """按当前裁剪/宽度/fps 抽取选段帧到 out_dir/00001.jpg…，返回帧路径列表。"""
+    """按当前裁剪/宽度/fps 抽取选段帧到 out_dir/00001.jpg…，返回帧路径列表。
+
+    out_dir 必须已存在（调用方负责创建，目录生命周期归调用方管，
+    这里不得 makedirs 重建已删除的旧目录）。
+    """
     ffmpeg = tool_path("ffmpeg")
     if not ffmpeg:
         raise FfmpegError("未找到 ffmpeg")
-    os.makedirs(out_dir, exist_ok=True)
     args = ["-y", "-ss", f"{max(0.0, start):.3f}"]
     if duration:
         args += ["-t", f"{duration:.3f}"]

@@ -2,6 +2,7 @@
 import os
 import shutil
 import tempfile
+import time
 
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon, QImage, QMovie, QPixmap
@@ -36,6 +37,7 @@ class GifTab(QWidget):
     def __init__(self, cfg, parent=None):
         super().__init__(parent)
         self.cfg = cfg
+        self._clean_stale_preview()
         self.video = None
         self.info = None
         self.gif_mode = False
@@ -507,21 +509,39 @@ class GifTab(QWidget):
         if t is not None:
             self.start_spin.setValue(round(float(t) * 100) / 100)
 
+    def _clean_stale_preview(self):
+        """清理上次崩溃/被杀残留在共享预览目录的陈旧文件（>24h，多实例安全）。"""
+        d = os.path.join(tempfile.gettempdir(), "GifKit_preview")
+        try:
+            cutoff = time.time() - 24 * 3600
+            for name in os.listdir(d):
+                p = os.path.join(d, name)
+                try:
+                    if os.path.isfile(p) and os.path.getmtime(p) < cutoff:
+                        os.remove(p)
+                except OSError:
+                    pass
+        except OSError:
+            pass
+
     def _refresh_frame(self):
         if not self.video or self._busy:
             return
         w = self.info["width"] or 1280
         self._frame_gen += 1
         gen = self._frame_gen
+        # 控件值在主线程取好再进工作线程（QWidget 禁止跨线程访问）
+        t = self._start_sec()
+        need_deint = ff._need_deinterlace(self._deint_mode(),
+                                          (self.info or {}).get("field_order"))
+        frame_w = min(960, max(320, w))
+        video = self.video
 
         def job():
             # 文件名带上代数：快速调参时新旧两帧可能并发抽帧，避免写同一个文件
             out = os.path.join(tempfile.gettempdir(),
                                f"gifkit_{os.getpid()}_frame_{gen}.png")
-            ff.extract_frame(self.video, self._start_sec(), out,
-                             width=min(960, max(320, w)),
-                             deinterlace=ff._need_deinterlace(
-                                 self._deint_mode(), self.info.get("field_order")))
+            ff.extract_frame(video, t, out, width=frame_w, deinterlace=need_deint)
             return out
 
         wk = FnWorker(job)
@@ -831,6 +851,9 @@ class GifTab(QWidget):
     def _out_name(self):
         base = os.path.splitext(os.path.basename(self.video))[0]
         suffix = self.suffix_edit.text().strip() or "_gif"
+        suffix = suffix.replace("/", "").replace("\\", "")   # 防路径穿越
+        if not suffix:
+            suffix = "_gif"
         return base + suffix + ".gif"
 
     # ================= 预览 / 保存 =================

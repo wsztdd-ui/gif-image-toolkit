@@ -43,29 +43,38 @@ class Config:
         self.data = json.loads(json.dumps(DEFAULTS))
         self.load()
 
+    def _fallback_path(self) -> str:
+        """save 写入失败时的回退路径（与 save 的回退顺序一致）。"""
+        base = os.environ.get("APPDATA") or os.path.expanduser("~")
+        return os.path.join(base, APP_NAME, "config.json")
+
     def load(self):
-        try:
-            with open(self.path, "r", encoding="utf-8") as f:
-                saved = json.load(f)
-            for sec, vals in saved.items():
-                if isinstance(vals, dict):
-                    self.data.setdefault(sec, {}).update(vals)
-                else:
-                    self.data[sec] = vals
-        except (OSError, ValueError):
-            pass
+        saved = None
+        for path in (self.path, self._fallback_path()):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    saved = json.load(f)
+                break
+            except (OSError, ValueError):
+                continue
+        if saved is None:
+            return
+        if not isinstance(saved, dict):     # 合法 JSON 但顶层不是对象 → 按损坏丢弃
+            return
+        for sec, vals in saved.items():
+            if isinstance(vals, dict):
+                self.data.setdefault(sec, {}).update(vals)
+            # 非 dict 分区（损坏配置）丢弃，避免后续 .get() AttributeError 崩溃
 
     def save(self):
         payload = json.dumps(self.data, ensure_ascii=False, indent=2)
-        try:
-            with open(self.path, "w", encoding="utf-8") as f:
-                f.write(payload)
-        except OSError:
-            base = os.environ.get("APPDATA") or os.path.expanduser("~")
-            alt = os.path.join(base, APP_NAME)
+        for path in (self.path, self._fallback_path()):
             try:
-                os.makedirs(alt, exist_ok=True)
-                with open(os.path.join(alt, "config.json"), "w", encoding="utf-8") as f:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                tmp_path = path + ".tmp"        # 原子写：防进程被杀留下半截 JSON
+                with open(tmp_path, "w", encoding="utf-8") as f:
                     f.write(payload)
+                os.replace(tmp_path, path)
+                return
             except OSError:
-                pass
+                continue

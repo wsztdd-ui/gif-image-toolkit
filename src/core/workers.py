@@ -89,23 +89,24 @@ class ImgWorker(QThread):
         self._cancelled = True
 
     def _dst_for(self, src):
+        """计算输出路径（批量内同名去重在 run() 串行预生成时做）。"""
         if self._opt["outdir_mode"] == "custom" and self._opt["outdir"]:
             outdir = self._opt["outdir"]
-            os.makedirs(outdir, exist_ok=True)
         else:
             outdir = os.path.dirname(src)
         kind = imglib.target_kind(src, self._opt["fmt"])
         base = os.path.splitext(os.path.basename(src))[0]
-        dst = os.path.join(outdir, base + self._opt["suffix"] + imglib.EXT_BY_KIND[kind])
+        suffix = (self._opt["suffix"] or "").replace("/", "").replace("\\", "")
+        dst = os.path.join(outdir, base + suffix + imglib.EXT_BY_KIND[kind])
         return dst
 
-    def _one(self, i, src, state, lock):
+    def _one(self, i, src, dst, state, lock):
         if self._cancelled:
             return
-        dst = self._dst_for(src)
+        part = dst + ".part"        # 先写临时名再原子替换：防并发交错与半截文件
         try:
             orig, new, kind = imglib.compress_one(
-                src, dst,
+                src, part,
                 fmt=self._opt["fmt"], quality=self._opt["quality"],
                 max_edge=self._opt["max_edge"],
                 quantize_png=self._opt["quantize_png"])
@@ -113,11 +114,17 @@ class ImgWorker(QThread):
             if self._opt["skip_larger"] and self._opt["fmt"] == "keep" \
                     and new >= orig and os.path.splitext(src)[1].lower() == \
                     imglib.EXT_BY_KIND[kind]:
-                os.remove(dst)
+                os.remove(part)
                 skipped = True
+            else:
+                os.replace(part, dst)
             self.row.emit(i, {"orig": orig, "new": new, "kind": kind,
                               "dst": dst, "skipped": skipped})
         except Exception as e:  # noqa: BLE001
+            try:
+                os.remove(part)
+            except OSError:
+                pass
             self.row.emit(i, {"error": str(e)})
             with lock:
                 done_n = state["done"] + 1
@@ -138,9 +145,26 @@ class ImgWorker(QThread):
             workers = min(6, os.cpu_count() or 4)
             state = {"ok": 0, "skip": 0, "done": 0}
             lock = threading.Lock()
+            # 串行预生成目标路径：自定义输出目录先建好；同一批里不同目录的
+            # 同名文件（如 a/IMG_0001.jpg 与 b/IMG_0001.jpg）汇入同一目录时
+            # 去重命名，避免线程池并发写同一文件（交错写坏/互相删除）
+            plan = []
+            used = set()
+            if self._opt["outdir_mode"] == "custom" and self._opt["outdir"]:
+                os.makedirs(self._opt["outdir"], exist_ok=True)
+            for i, src in enumerate(self._files):
+                dst = self._dst_for(src)
+                if dst in used:
+                    base, ext = os.path.splitext(dst)
+                    k = 2
+                    while os.path.join(f"{base} ({k}){ext}") in used:
+                        k += 1
+                    dst = f"{base} ({k}){ext}"
+                used.add(dst)
+                plan.append((i, src, dst))
             with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
-                futs = [ex.submit(self._one, i, src, state, lock)
-                        for i, src in enumerate(self._files)]
+                futs = [ex.submit(self._one, i, src, dst, state, lock)
+                        for i, src, dst in plan]
                 for fut in futs:
                     fut.result()
             self.done.emit(state["ok"], state["skip"])
@@ -154,16 +178,23 @@ def install_preview(src, dst):
     return dst
 
 
+_zombie_workers = []    # terminate 后仍存活的 QThread：故意持引用，防运行中被销毁 fatal
+
+
 def shutdown_worker(wk, timeout_ms):
     """退出路径收尾线程：先礼貌等待，超时强杀。
 
     QThread 对象在线程仍在跑时被销毁会触发 Qt fatal
     "Destroyed while thread is still running"（进程以 0xC0000409 崩溃退出），
     所以等待超时后必须 terminate，不能带着活线程退出。
+    terminate 后若仍未退出，不再丢引用：故意泄漏到 _zombie_workers，
+    让 Python 不去销毁这个仍在运行的 QThread。
     """
     if wk is None or not wk.isRunning():
         return
     if wk.wait(timeout_ms):
         return
     wk.terminate()
-    wk.wait(1000)
+    if wk.wait(1000):
+        return
+    _zombie_workers.append(wk)
