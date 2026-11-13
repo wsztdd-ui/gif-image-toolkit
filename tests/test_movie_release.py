@@ -96,6 +96,13 @@ def main():
     print("MOVIE RELEASE TEST",
           "PASS" if ok else "FAIL",
           f"(对照组复现原始bug: {control_reproduced})")
+    # QApplication 存活期间销毁残留顶层控件：解释器退出阶段 Qt 清理
+    # 会把退出码改成非 0（Windows CI 实测：断言全 PASS 却 exit 1）
+    for w in list(QApplication.topLevelWidgets()):
+        w.deleteLater()
+    for _ in range(2):
+        app.processEvents()
+        time.sleep(0.05)
     sys.exit(0 if ok else 1)
 
 
