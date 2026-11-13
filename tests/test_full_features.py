@@ -56,6 +56,20 @@ def wait_until(app, cond, timeout, what=""):
     return False
 
 
+def destroy_remaining_widgets(app):
+    """退出前销毁残留顶层 QWidget，防止解释器关闭阶段销毁顺序错乱段错误。
+
+    实测 Linux/macOS CI：86 项断言全过后，进程退出时 Qt 报
+    'shared QObject was deleted directly' 并崩 139 —— 顶层 QWidget
+    活到 QApplication 析构之后导致。必须在 app 存活期间 deleteLater。
+    """
+    for w in list(QApplication.topLevelWidgets()):
+        w.deleteLater()
+    for _ in range(2):
+        app.processEvents()
+        time.sleep(0.05)
+
+
 def run_ff(args):
     subprocess.run([ff.tool_path("ffmpeg"), *args], check=True, capture_output=True,
                    creationflags=ff.CREATE_NO_WINDOW)
@@ -556,6 +570,8 @@ def main():
     finally:
         time.sleep(0.3)
         shutil.rmtree(tmp, ignore_errors=True)
+
+    destroy_remaining_widgets(app)      # 必须在 QApplication 存活时销毁控件
 
     n_pass = sum(1 for r in RESULTS if r)
     n_fail = len(RESULTS) - n_pass
