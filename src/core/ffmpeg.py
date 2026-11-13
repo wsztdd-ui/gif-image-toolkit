@@ -262,6 +262,7 @@ def make_gif(video, out_path, start=0.0, duration=None, crop=None, width=720,
     pfd, tmp_pal = tempfile.mkstemp(prefix="gifkit_palette_", suffix=".png")
     os.close(pfd)       # 试编估算与正式生成可能并发，调色板文件必须每次唯一
     rounds = []                       # (size, path, fps, colors, width)
+    pending = []                      # 已开跑但未登记进 rounds 的轮次文件（取消/失败也要清）
 
     def report(p, base, span):
         if progress:
@@ -295,6 +296,7 @@ def make_gif(video, out_path, start=0.0, duration=None, crop=None, width=720,
             fc = f"[0:v]{chain}[v];[v][1:v]paletteuse=dither={d}[out]"
             pass2 = [*seg_args, "-i", tmp_pal, "-filter_complex", fc,
                      "-map", "[out]", "-loop", "0", "-y", rpath]
+            pending.append(rpath)   # pass2 可能被取消/失败，半成品轮次也要进清理清单
             run_with_progress(pass2, seg, (lambda p: report(0.45 + p * 0.55, base, span)),
                               cancel_check)
 
@@ -331,6 +333,12 @@ def make_gif(video, out_path, start=0.0, duration=None, crop=None, width=720,
             os.remove(tmp_pal)
         except OSError:
             pass
+        for p in pending:               # 取消/失败时清掉未登记进 rounds 的半成品
+            if p != out_path and os.path.isfile(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
         for r in rounds:
             if r[1] != out_path and os.path.isfile(r[1]):
                 try:

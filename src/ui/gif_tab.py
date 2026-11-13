@@ -510,17 +510,33 @@ class GifTab(QWidget):
             self.start_spin.setValue(round(float(t) * 100) / 100)
 
     def _clean_stale_preview(self):
-        """清理上次崩溃/被杀残留在共享预览目录的陈旧文件（>24h，多实例安全）。"""
-        d = os.path.join(tempfile.gettempdir(), "GifKit_preview")
+        """清理崩溃/被杀残留的陈旧临时文件（>24h，多实例安全）：
+        共享预览目录 GifKit_preview/ 内的产物，以及系统临时目录根部的
+        gifkit_* 文件/目录（取帧 png、调色板、试编 gif、缩略图/抽帧目录）。"""
+        tmp_root = tempfile.gettempdir()
+        cutoff = time.time() - 24 * 3600
         try:
-            cutoff = time.time() - 24 * 3600
-            for name in os.listdir(d):
-                p = os.path.join(d, name)
-                try:
-                    if os.path.isfile(p) and os.path.getmtime(p) < cutoff:
-                        os.remove(p)
-                except OSError:
-                    pass
+            for name in os.listdir(os.path.join(tmp_root, "GifKit_preview")):
+                self._remove_stale(os.path.join(tmp_root, "GifKit_preview", name),
+                                   cutoff)
+        except OSError:
+            pass
+        try:
+            for name in os.listdir(tmp_root):
+                if name.startswith("gifkit_"):
+                    self._remove_stale(os.path.join(tmp_root, name), cutoff)
+        except OSError:
+            pass
+
+    @staticmethod
+    def _remove_stale(p, cutoff):
+        try:
+            if os.path.getmtime(p) >= cutoff:
+                return
+            if os.path.isfile(p):
+                os.remove(p)
+            elif os.path.isdir(p):
+                shutil.rmtree(p, ignore_errors=True)
         except OSError:
             pass
 

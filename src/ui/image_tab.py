@@ -282,6 +282,9 @@ class ImageTab(QWidget):
             "outdir_mode": "custom" if self.radio_custom.isChecked() else "source",
             "outdir": self.out_edit.text().strip(),
         }
+        if opt["outdir_mode"] == "custom" and not opt["outdir"]:
+            self._status("选择了自定义目录但未填写路径", warn=True)
+            return
         self.btn_go.setEnabled(False)
         self.btn_add.setEnabled(False)      # 运行中禁用会改动行号/列表的操作，
         self.btn_remove.setEnabled(False)   # 防止结果写错行

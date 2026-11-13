@@ -180,7 +180,11 @@ def main():
         print(f"[smoke] ffmpeg available: {ok} ({msg})", flush=True)
         print(f"[smoke] bundled font: {list(fams) or '未找到（回退系统字体）'}", flush=True)
         QTimer.singleShot(2500, app.quit)
-    sys.exit(app.exec())
+    code = app.exec()
+    # QApplication 存活期间销毁残留顶层控件（CI 实测过的退出销毁顺序问题）
+    win.deleteLater()
+    app.processEvents()
+    sys.exit(code)
 
 
 if __name__ == "__main__":
