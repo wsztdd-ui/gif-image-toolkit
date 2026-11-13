@@ -145,6 +145,13 @@ def main():
     print("  对照组: 复现画面变空 =", not during_b)
     print("REPLAY RACE TEST", "PASS" if (ok_a and ok_b) else "FAIL",
           f"(对照组复现原始bug: {ok_b})")
+    # QApplication 存活期间销毁残留顶层控件，防止解释器退出阶段
+    # 'shared QObject was deleted directly' 段错误（linux/macOS CI 实测）
+    for w in list(QApplication.topLevelWidgets()):
+        w.deleteLater()
+    for _ in range(2):
+        app.processEvents()
+        time.sleep(0.05)
     sys.exit(0 if (ok_a and ok_b) else 1)
 
 

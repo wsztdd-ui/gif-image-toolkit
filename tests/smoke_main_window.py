@@ -25,5 +25,10 @@ print("页签:", [win.tabs.tabText(i) for i in range(win.tabs.count())])
 win.gif_tab.shutdown()
 win.img_tab.shutdown()
 win.close()
+# QApplication 存活期间销毁残留顶层控件，防止解释器退出阶段段错误
+for w in list(QApplication.topLevelWidgets()):
+    w.deleteLater()
+for _ in range(2):
+    app.processEvents()
 print("MAINWINDOW SMOKE", "PASS" if ok else "FAIL")
 sys.exit(0 if ok else 1)

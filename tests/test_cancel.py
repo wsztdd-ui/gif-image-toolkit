@@ -8,6 +8,10 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
+# 本测试只需要 QThread/信号机制，不需要窗口：CI 无显示器的 Linux 上
+# Qt 会试加载 xcb 插件（缺 libxcb-cursor）直接 abort，统一离屏
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
