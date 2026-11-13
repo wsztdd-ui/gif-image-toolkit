@@ -4,7 +4,7 @@ import os
 import sys
 
 APP_NAME = "GifKit"
-APP_VERSION = "0.2.1"
+APP_VERSION = "0.5.0"
 
 DEFAULTS = {
     "gif": {

@@ -1,6 +1,8 @@
 """Qt 后台工作者：所有耗时操作都不在主线程执行。"""
+import concurrent.futures
 import shutil
 import os
+import threading
 import time
 
 from PySide6.QtCore import QThread, Signal
@@ -40,7 +42,7 @@ class FnWorker(QThread):
 class GifWorker(QThread):
     """GIF 生成（也用于动图再压缩）。progress: 0-100。"""
     progress = Signal(int)
-    ok = Signal(str, float)          # 产物路径, 用时(秒)
+    ok = Signal(str, float, dict)    # 产物路径, 用时(秒), 实际参数(target模式可能下调)
     failed = Signal(str)
 
     def __init__(self, params, parent=None):
@@ -59,9 +61,10 @@ class GifWorker(QThread):
     def run(self):
         t0 = time.time()
         try:
-            path = ff.make_gif(progress=self._on_progress,
-                               cancel_check=lambda: self._cancelled, **self._params)
-            self.ok.emit(path, time.time() - t0)
+            path, applied = ff.make_gif(progress=self._on_progress,
+                                        cancel_check=lambda: self._cancelled,
+                                        **self._params)
+            self.ok.emit(path, time.time() - t0, applied)
         except (Cancelled, ff.FfmpegCancelled):
             self.failed.emit("已取消")
         except Exception as e:  # noqa: BLE001
@@ -69,7 +72,8 @@ class GifWorker(QThread):
 
 
 class ImgWorker(QThread):
-    """批量图片压缩。每个文件完成发一条 row 信号。"""
+    """批量图片压缩（线程池并行）。每个文件完成发一条 row 信号（行号随信号走）。
+    done(成功数, 跳过数) 只统计已完成/已跳过的文件，取消后剩余文件直接跳过。"""
     row = Signal(int, dict)          # 行号, {orig,new,kind,dst,skipped} 或 {"error":...}
     progress = Signal(int)
     done = Signal(int, int)          # 成功数, 跳过数
@@ -95,34 +99,51 @@ class ImgWorker(QThread):
         dst = os.path.join(outdir, base + self._opt["suffix"] + imglib.EXT_BY_KIND[kind])
         return dst
 
-    def run(self):
-        ok_n = skip_n = 0
+    def _one(self, i, src, state, lock):
+        if self._cancelled:
+            return
+        dst = self._dst_for(src)
         try:
-            for i, src in enumerate(self._files):
-                if self._cancelled:
-                    break
-                dst = self._dst_for(src)
-                try:
-                    orig, new, kind = imglib.compress_one(
-                        src, dst,
-                        fmt=self._opt["fmt"], quality=self._opt["quality"],
-                        max_edge=self._opt["max_edge"],
-                        quantize_png=self._opt["quantize_png"])
-                    skipped = False
-                    if self._opt["skip_larger"] and self._opt["fmt"] == "keep" \
-                            and new >= orig and os.path.splitext(src)[1].lower() == \
-                            imglib.EXT_BY_KIND[kind]:
-                        os.remove(dst)
-                        skipped = True
-                        skip_n += 1
-                    else:
-                        ok_n += 1
-                    self.row.emit(i, {"orig": orig, "new": new, "kind": kind,
-                                      "dst": dst, "skipped": skipped})
-                except Exception as e:  # noqa: BLE001
-                    self.row.emit(i, {"error": str(e)})
-                self.progress.emit(int((i + 1) * 100 / max(1, len(self._files))))
-            self.done.emit(ok_n, skip_n)
+            orig, new, kind = imglib.compress_one(
+                src, dst,
+                fmt=self._opt["fmt"], quality=self._opt["quality"],
+                max_edge=self._opt["max_edge"],
+                quantize_png=self._opt["quantize_png"])
+            skipped = False
+            if self._opt["skip_larger"] and self._opt["fmt"] == "keep" \
+                    and new >= orig and os.path.splitext(src)[1].lower() == \
+                    imglib.EXT_BY_KIND[kind]:
+                os.remove(dst)
+                skipped = True
+            self.row.emit(i, {"orig": orig, "new": new, "kind": kind,
+                              "dst": dst, "skipped": skipped})
+        except Exception as e:  # noqa: BLE001
+            self.row.emit(i, {"error": str(e)})
+            with lock:
+                done_n = state["done"] + 1
+                state["done"] = done_n
+            self.progress.emit(int(done_n * 100 / max(1, len(self._files))))
+            return
+        with lock:
+            if skipped:
+                state["skip"] += 1
+            else:
+                state["ok"] += 1
+            done_n = state["done"] + 1
+            state["done"] = done_n
+        self.progress.emit(int(done_n * 100 / max(1, len(self._files))))
+
+    def run(self):
+        try:
+            workers = min(6, os.cpu_count() or 4)
+            state = {"ok": 0, "skip": 0, "done": 0}
+            lock = threading.Lock()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+                futs = [ex.submit(self._one, i, src, state, lock)
+                        for i, src in enumerate(self._files)]
+                for fut in futs:
+                    fut.result()
+            self.done.emit(state["ok"], state["skip"])
         except Exception as e:  # noqa: BLE001
             self.failed.emit(str(e))
 
@@ -131,3 +152,18 @@ def install_preview(src, dst):
     """把临时预览产物保存到输出目录（跨盘移动兼容）。"""
     dst = shutil.move(src, dst)
     return dst
+
+
+def shutdown_worker(wk, timeout_ms):
+    """退出路径收尾线程：先礼貌等待，超时强杀。
+
+    QThread 对象在线程仍在跑时被销毁会触发 Qt fatal
+    "Destroyed while thread is still running"（进程以 0xC0000409 崩溃退出），
+    所以等待超时后必须 terminate，不能带着活线程退出。
+    """
+    if wk is None or not wk.isRunning():
+        return
+    if wk.wait(timeout_ms):
+        return
+    wk.terminate()
+    wk.wait(1000)

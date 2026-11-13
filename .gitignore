@@ -20,7 +20,10 @@ bin/ffmpeg
 bin/ffprobe
 build/icon.iconset/
 build/icon.icns
-
 # PyInstaller 工作目录
 build/gifkit_mac/
 build/gifkit/
+# PyInstaller 中间产物
+# 本地会话与发布物料（不入库）
+.zcode/
+单文件版/

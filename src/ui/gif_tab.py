@@ -5,16 +5,17 @@ import tempfile
 
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon, QImage, QMovie, QPixmap
-from PySide6.QtWidgets import (QButtonGroup, QComboBox, QDoubleSpinBox, QFileDialog,
-                               QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-                               QListWidgetItem, QListView, QProgressBar, QPushButton,
-                               QRadioButton, QSpinBox, QStackedWidget, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog,
+                               QFrame, QGroupBox, QHBoxLayout, QLabel,
+                               QLineEdit, QListWidget, QListWidgetItem,
+                               QListView, QProgressBar, QPushButton, QSpinBox,
+                               QStackedWidget, QVBoxLayout, QWidget)
 
 from core import ffmpeg as ff
-from core.workers import FnWorker, GifWorker, install_preview
+from core.workers import FnWorker, GifWorker, install_preview, shutdown_worker
 from ui.crop_preview import CropPreview
 from ui.range_slider import RangeSlider
+from ui.widgets import Collapsible, OutputLocation
 from utils import fsutil
 from utils.timefmt import fmt_seconds, human_size
 
@@ -45,12 +46,15 @@ class GifTab(QWidget):
         self._preview_file = None
         self._last_dst = None
         self._movie = None                  # QMovie 强引用，防 GC 中断动画
-        self._pending_dims = None           # 本次生成时的输出尺寸快照
         self._frame_gen = 0                 # 取帧代数：丢弃旧视频的迟到结果
         self._thumb_gen = 0
+        self._est_gen = 0                   # 估算校准代数：丢弃旧参数的迟到结果
         self._sel_timer = QTimer(self)      # 选段变化 → 防抖刷新静态预览帧
         self._sel_timer.setSingleShot(True)
         self._sel_timer.timeout.connect(self._refresh_frame)
+        self._est_timer = QTimer(self)      # 参数变化 → 防抖后台试编校准估算
+        self._est_timer.setSingleShot(True)
+        self._est_timer.timeout.connect(self._start_est_probe)
         self._replay_timer = QTimer(self)   # 播放中改参数 → 防抖后按新参数重播
         self._replay_timer.setSingleShot(True)
         self._replay_timer.timeout.connect(self._on_replay_timeout)
@@ -71,20 +75,18 @@ class GifTab(QWidget):
         root.addLayout(right, 0)
 
         # -- 左列 --
-        top = QHBoxLayout()
-        self.btn_pick = QPushButton("选择视频…")
-        self.btn_pick.clicked.connect(self._pick_video)
-        top.addWidget(self.btn_pick)
         self.warn_label = QLabel("")
         self.warn_label.setStyleSheet("color:#bc4b09;")
-        top.addWidget(self.warn_label, 1)
-        left.addLayout(top)
+        self.warn_label.setWordWrap(True)
+        self.warn_label.setVisible(False)
+        left.addWidget(self.warn_label)
 
         self.preview_stack = QStackedWidget()
         self.preview = CropPreview()
         self.preview.cropChanged.connect(self._on_crop_changed)
         self.preview.fileDropped.connect(self._route_drop)
         self.preview.editRequested.connect(self._stop_playback)
+        self.preview.openRequested.connect(self._pick_video)
         self.preview.setMinimumHeight(300)
         self.preview_label = QLabel("预览生成中…")
         self.preview_label.setAlignment(Qt.AlignCenter)
@@ -94,7 +96,15 @@ class GifTab(QWidget):
         self.preview_stack.addWidget(self.preview_label)    # 1 成品预览
         left.addWidget(self.preview_stack, 1)
 
-        tbox = QGroupBox("截取时间（拖动滑轨两端选取范围，中间整体平移）")
+        self.file_line = QLabel("")
+        self.file_line.setWordWrap(True)
+        self.file_line.setStyleSheet(
+            "background:#ffffff;border:1px solid #e0e0e0;border-radius:8px;"
+            "padding:6px 12px;color:#616161;font-size:12px;")
+        self.file_line.setVisible(False)
+        left.addWidget(self.file_line)
+
+        tbox = QGroupBox("截取时间")
         tform = QVBoxLayout(tbox)
         prow = QHBoxLayout()
         self.btn_play = QPushButton("▶ 播放选段")
@@ -151,15 +161,7 @@ class GifTab(QWidget):
         rc = QVBoxLayout(right_box)
         rc.setContentsMargins(0, 0, 0, 0)
 
-        ibox = QGroupBox("源文件信息")
-        iv = QVBoxLayout(ibox)
-        self.info_label = QLabel("未载入")
-        self.info_label.setWordWrap(True)
-        self.info_label.setStyleSheet("color:#424242;")
-        iv.addWidget(self.info_label)
-        rc.addWidget(ibox)
-
-        cbox = QGroupBox("裁剪范围（在预览图上拖拽框选）")
+        cbox = QGroupBox("裁剪")
         cv = QVBoxLayout(cbox)
         crow = QHBoxLayout()
         crow.addWidget(QLabel("比例"))
@@ -173,12 +175,13 @@ class GifTab(QWidget):
         self.btn_crop_reset.clicked.connect(self.preview.clear_crop)
         crow.addWidget(self.btn_crop_reset)
         cv.addLayout(crow)
-        self.crop_label = QLabel("全画面")
+        self.crop_label = QLabel("全画面 · 在预览图上拖拽框选可只截局部")
         self.crop_label.setStyleSheet("color:#616161;font-size:12px;")
+        self.crop_label.setWordWrap(True)
         cv.addWidget(self.crop_label)
         rc.addWidget(cbox)
 
-        obox = QGroupBox("输出设置")
+        obox = QGroupBox("输出")
         ov = QVBoxLayout(obox)
         prow = QHBoxLayout()
         prow.addWidget(QLabel("质量预设"))
@@ -201,92 +204,118 @@ class GifTab(QWidget):
         self.width_spin.setVisible(False)
         wrow.addWidget(self.width_spin)
         ov.addLayout(wrow)
-        frow = QHBoxLayout()
-        frow.addWidget(QLabel("帧率"))
+        trow = QHBoxLayout()
+        self.target_chk = QCheckBox("压到指定体积")
+        self.target_chk.setToolTip("以当前参数为质量上限自动下调（帧率→颜色数→宽度），"
+                                   "生成不超过目标体积的 GIF；耗时可能成倍增加")
+        self.target_chk.toggled.connect(self._on_target_mode)
+        trow.addWidget(self.target_chk)
+        self.target_spin = QDoubleSpinBox()
+        self.target_spin.setDecimals(1)
+        self.target_spin.setSingleStep(0.1)
+        self.target_spin.setRange(0.1, 500.0)
+        self.target_spin.setSuffix(" MB")
+        self.target_spin.setValue(2.0)
+        self.target_spin.setEnabled(False)
+        self.target_spin.valueChanged.connect(self._on_output_changed)
+        trow.addWidget(self.target_spin)
+        trow.addStretch(1)
+        ov.addLayout(trow)
+        self.estimate = QLabel("—")
+        self.estimate.setStyleSheet("color:#0e700e;")
+        self.estimate.setToolTip("“粗估”为公式快算；“实测”按当前参数试编码 1 秒外推，更准")
+        ov.addWidget(self.estimate)
+
+        adv = Collapsible("高级参数")
+        arow1 = QHBoxLayout()
+        arow1.addWidget(QLabel("帧率"))
         self.fps_spin = QSpinBox()
         self.fps_spin.setRange(3, 30)
         self.fps_spin.setValue(12)
         self.fps_spin.valueChanged.connect(self._on_detail_change)
-        frow.addWidget(self.fps_spin)
-        frow.addWidget(QLabel("颜色数"))
+        arow1.addWidget(self.fps_spin)
+        arow1.addSpacing(8)
+        arow1.addWidget(QLabel("颜色数"))
         self.colors_combo = QComboBox()
         self.colors_combo.addItems(COLORS)
         self.colors_combo.currentIndexChanged.connect(self._on_detail_change)
-        frow.addWidget(self.colors_combo)
-        frow.addWidget(QLabel("抖动"))
+        arow1.addWidget(self.colors_combo)
+        arow1.addSpacing(8)
+        arow1.addWidget(QLabel("抖动"))
         self.dither_combo = QComboBox()
         for val, name in DITHERS:
             self.dither_combo.addItem(name, val)
         self.dither_combo.setItemData(0, "Bayer 抖动：体积小，适合截图类", Qt.ToolTipRole)
         self.dither_combo.setItemData(1, "Floyd 抖动：过渡更平滑，体积略大", Qt.ToolTipRole)
         self.dither_combo.currentIndexChanged.connect(self._on_detail_change)
-        frow.addWidget(self.dither_combo, 1)
-        ov.addLayout(frow)
-        self.estimate = QLabel("—")
-        self.estimate.setStyleSheet("color:#0e700e;")
-        self.estimate.setWordWrap(True)
-        ov.addWidget(self.estimate)
-        rc.addWidget(obox)
-
-        gbox = QGroupBox("输出位置")
-        gv = QVBoxLayout(gbox)
-        orow = QHBoxLayout()
-        self.radio_src = QRadioButton("源文件目录")
-        self.radio_custom = QRadioButton("自定义…")
-        self._out_group = QButtonGroup(self)
-        self._out_group.addButton(self.radio_src)
-        self._out_group.addButton(self.radio_custom)
-        self.radio_src.toggled.connect(self._update_estimate)
-        orow.addWidget(self.radio_src)
-        orow.addWidget(self.radio_custom)
-        orow.addStretch(1)
-        gv.addLayout(orow)
-        drow = QHBoxLayout()
-        self.out_edit = QLineEdit()
-        self.out_edit.setPlaceholderText("自定义输出目录")
-        self.out_edit.setEnabled(False)
-        drow.addWidget(self.out_edit, 1)
-        self.btn_out_browse = QPushButton("…")
-        self.btn_out_browse.setFixedWidth(32)
-        self.btn_out_browse.clicked.connect(self._browse_outdir)
-        drow.addWidget(self.btn_out_browse)
-        gv.addLayout(drow)
-        srow = QHBoxLayout()
-        srow.addWidget(QLabel("文件后缀"))
+        arow1.addWidget(self.dither_combo, 1)
+        adv.add_layout(arow1)
+        arow1b = QHBoxLayout()
+        arow1b.addWidget(QLabel("隔行源"))
+        self.deint_combo = QComboBox()
+        for val, name in (("auto", "自动去隔行"), ("on", "强制开启"), ("off", "关闭")):
+            self.deint_combo.addItem(name, val)
+        self.deint_combo.setItemData(
+            0, "检测到隔行扫描素材（如广电 1080i TS）时自动套 yadif 去隔行，"
+               "避免画面梳齿", Qt.ToolTipRole)
+        self.deint_combo.currentIndexChanged.connect(self._on_detail_change)
+        arow1b.addWidget(self.deint_combo)
+        arow1b.addStretch(1)
+        adv.add_layout(arow1b)
+        arow2 = QHBoxLayout()
+        arow2.addWidget(QLabel("文件后缀"))
         self.suffix_edit = QLineEdit("_gif")
         self.suffix_edit.setFixedWidth(80)
-        srow.addWidget(self.suffix_edit)
-        srow.addWidget(QLabel("源文件名 + 后缀 + .gif"))
-        srow.addStretch(1)
-        gv.addLayout(srow)
-        rc.addWidget(gbox)
+        arow2.addWidget(self.suffix_edit)
+        arow2.addWidget(QLabel("文件名 = 源文件名 + 后缀 + .gif"))
+        arow2.addStretch(1)
+        adv.add_layout(arow2)
+        ov.addWidget(adv)
 
-        gen_box = QGroupBox("生成 GIF")
-        genv = QVBoxLayout(gen_box)
+        self.outloc = OutputLocation("和视频相同的位置")
+        self.radio_src = self.outloc.radio_src
+        self.radio_custom = self.outloc.radio_custom
+        self.out_edit = self.outloc.out_edit
+        ov.addWidget(self.outloc)
+        rc.addWidget(obox)
+
+        gen_card = QFrame()
+        gen_card.setObjectName("card")
+        gv = QVBoxLayout(gen_card)
+        gv.setContentsMargins(10, 10, 10, 10)
+        gv.setSpacing(6)
         self.btn_gen = QPushButton("生成 GIF")
         self.btn_gen.setObjectName("genBtn")
+        self.btn_gen.setMinimumHeight(40)
         self.btn_gen.clicked.connect(self._do_preview)
-        genv.addWidget(self.btn_gen)
+        gv.addWidget(self.btn_gen)
         self.progress = _ProgressBar()
         self.progress.setVisible(False)
-        genv.addWidget(self.progress)
+        gv.addWidget(self.progress)
         gstat = QHBoxLayout()
         self.status = QLabel("就绪")
         self.status.setStyleSheet("color:#616161;")
+        self.status.setWordWrap(True)
         gstat.addWidget(self.status, 1)
         self.btn_cancel = QPushButton("取消")
         self.btn_cancel.setVisible(False)
         self.btn_cancel.clicked.connect(self._cancel_gen)
         gstat.addWidget(self.btn_cancel)
-        genv.addLayout(gstat)
+        gv.addLayout(gstat)
+        self.cmp_label = QLabel("")
+        self.cmp_label.setStyleSheet("color:#0e700e;font-size:14pt;font-weight:600;")
+        self.cmp_label.setToolTip("预览产物与保存的文件完全一致")
+        self.cmp_label.setVisible(False)
+        gv.addWidget(self.cmp_label)
         self.pv_meta = QLabel("")
         self.pv_meta.setWordWrap(True)
-        self.pv_meta.setStyleSheet("color:#0e700e;font-size:12px;")
+        self.pv_meta.setStyleSheet("color:#616161;font-size:12px;")
         self.pv_meta.setVisible(False)
-        genv.addWidget(self.pv_meta)
+        gv.addWidget(self.pv_meta)
         brow = QHBoxLayout()
-        self.btn_save = QPushButton("保存到输出目录")
+        self.btn_save = QPushButton("保存")
         self.btn_save.setObjectName("genBtn")
+        self.btn_save.setMinimumHeight(34)
         self.btn_save.setVisible(False)
         self.btn_save.clicked.connect(self._save_preview)
         brow.addWidget(self.btn_save, 1)
@@ -294,17 +323,24 @@ class GifTab(QWidget):
         self.btn_discard.setVisible(False)
         self.btn_discard.clicked.connect(self._back_to_edit)
         brow.addWidget(self.btn_discard)
+        gv.addLayout(brow)
+        srow = QHBoxLayout()
         self.btn_open = QPushButton("打开目录")
+        self.btn_open.setObjectName("linkBtn")
+        self.btn_open.setCursor(Qt.PointingHandCursor)
         self.btn_open.setVisible(False)
         self.btn_open.clicked.connect(lambda: fsutil.open_in_explorer(self._last_dst))
-        brow.addWidget(self.btn_open)
-        genv.addLayout(brow)
-        rc.addWidget(gen_box)
+        srow.addWidget(self.btn_open)
+        srow.addStretch(1)
+        gv.addLayout(srow)
+        rc.addWidget(gen_card)
         rc.addStretch(1)
 
         ok, msg = ff.available()
         if not ok:
             self.warn_label.setText(msg)
+            self.warn_label.setVisible(True)
+            self.preview.set_hint("把视频拖到这里，或点击选择", msg)
             self.btn_gen.setEnabled(False)
 
     # ================= 载入 =================
@@ -339,6 +375,8 @@ class GifTab(QWidget):
             return
         self._stop_playback()
         self._sel_timer.stop()
+        self._est_timer.stop()
+        self._est_gen += 1          # 作废旧视频的迟到估算校准
         self._back_to_edit()        # 先释放预览动画的文件句柄，临时产物才删得掉
         self._cleanup_temp()
         self.video = path
@@ -366,20 +404,17 @@ class GifTab(QWidget):
             self.dur_spin.setValue(10.0)
         self.range_slider.blockSignals(False)
         if self.gif_mode:
-            frames = f"　帧数：{info['frames']}" if info.get("frames") else ""
             self.time_note.setText("点“▶ 播放选段”预览效果；点击画面返回编辑。")
         else:
-            frames = ""
-            self.time_note.setText("点“▶ 播放选段”预览效果；在画面拖拽=裁剪编辑，"
-                                   "点击缩略图设为起点。")
+            self.time_note.setText("拖两端选范围，按住中间整体平移；点缩略图设为起点，"
+                                   "“▶ 播放选段”可预览效果。")
         size_txt = human_size(info["size"]) if info["size"] else "未知"
-        fps_txt = f"{info['fps']:.2f}" if info["fps"] else "未知"
-        self.info_label.setText(
-            f"<b>{os.path.basename(path)}</b><br>"
-            f"大小：{size_txt}　编码：{info['codec']}"
-            + ("（动图）" if self.gif_mode else "") + "<br>"
-            f"分辨率：{info['width']} × {info['height']}　帧率：{fps_txt}<br>"
-            f"时长：{fmt_seconds(info['duration']) if known else '未知'}{frames}")
+        dur_txt = fmt_seconds(info["duration"]) if known else "时长未知"
+        self.file_line.setText(
+            f"<b>{os.path.basename(path)}</b>　{size_txt} · "
+            f"{info['width']}×{info['height']} · {dur_txt}"
+            + ("　· 动图" if self.gif_mode else ""))
+        self.file_line.setVisible(True)
         self._stop_playback()
         self._load_thumbs()
         self._update_estimate()
@@ -393,6 +428,13 @@ class GifTab(QWidget):
 
     def _dur_sec(self):
         return float(self.dur_spin.value())
+
+    def _deint_mode(self):
+        return self.deint_combo.currentData()
+
+    def _on_target_mode(self, checked):
+        self.target_spin.setEnabled(checked)
+        self._on_output_changed()
 
     def _on_preview_param_changed(self):
         """参数变化：刷新估算；播放中则去抖后按新参数重播，避免拖动期间反复抽帧。"""
@@ -477,7 +519,9 @@ class GifTab(QWidget):
             out = os.path.join(tempfile.gettempdir(),
                                f"gifkit_{os.getpid()}_frame_{gen}.png")
             ff.extract_frame(self.video, self._start_sec(), out,
-                             width=min(960, max(320, w)))
+                             width=min(960, max(320, w)),
+                             deinterlace=ff._need_deinterlace(
+                                 self._deint_mode(), self.info.get("field_order")))
             return out
 
         wk = FnWorker(job)
@@ -497,6 +541,13 @@ class GifTab(QWidget):
         wk = self.sender()
         stale = getattr(wk, "gen", 0) != self._frame_gen
         if stale or not self.video:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            return
+        if self.preview.is_live():
+            # 选段播放/冻结期间迟到的静态帧会顶掉播放画面，丢弃
             try:
                 os.remove(path)
             except OSError:
@@ -558,6 +609,19 @@ class GifTab(QWidget):
         else:
             self._play_selection()
 
+    def _pause_playback(self):
+        """停掉翻帧定时器但保留最后一帧画面（冻结）。
+
+        帧目录马上要清掉重建，旧帧路径即将失效：若不停定时器，它会继续
+        翻已删除的帧，QPixmap 变空后预览会闪成空状态提示。
+        """
+        if self._play_timer:
+            self._play_timer.stop()
+            self._play_timer = None
+        self._sel_timer.stop()
+        self._play_frames = []
+        self._play_idx = 0
+
     def _play_selection(self):
         """按当前 范围+裁剪+宽度+帧率 抽帧并循环播放（点击画面返回编辑）。"""
         if not self.video or self._busy:
@@ -569,6 +633,7 @@ class GifTab(QWidget):
         pfs = min(max(3, self.fps_spin.value()), 15)      # 预览帧率封顶 15，够流畅
         if dur * pfs > 240:                               # 帧数上限保护
             pfs = max(3, int(240 / dur))
+        self._pause_playback()    # 旧一轮先冻结在最后一帧，帧目录才能安全重建
         if self._sel_dir:
             shutil.rmtree(self._sel_dir, ignore_errors=True)
         self._sel_dir = tempfile.mkdtemp(prefix="gifkit_sel_")
@@ -578,7 +643,10 @@ class GifTab(QWidget):
         def job():
             return ff.extract_frames(self.video, self._sel_dir, start=start,
                                      duration=dur, crop=self._crop_tuple(),
-                                     width=480, fps=pfs)
+                                     width=480, fps=pfs,
+                                     deinterlace=ff._need_deinterlace(
+                                         self._deint_mode(),
+                                         self.info.get("field_order")))
 
         wk = FnWorker(job)
         self._track(wk)
@@ -596,7 +664,8 @@ class GifTab(QWidget):
         wk = self.sender()
         if getattr(wk, "gen", 0) != self._play_gen:
             return              # 旧一代抽帧失败（目录已被新一轮清掉），忽略
-        self._status("选段预览失败：" + msg)
+        self._stop_playback()   # 本轮失败：回到编辑模式，别停在冻结画面上
+        self._status("选段预览失败：" + msg, warn=True)
 
     def _on_play_frames(self, paths, gen, fps):
         if gen != self._play_gen or not paths or not self.video:
@@ -616,10 +685,13 @@ class GifTab(QWidget):
         if not self._play_frames:
             return
         self._play_idx = (self._play_idx + 1) % len(self._play_frames)
-        self.preview.set_live(QPixmap(self._play_frames[self._play_idx]))
+        pm = QPixmap(self._play_frames[self._play_idx])
+        if not pm.isNull():     # 帧文件被外部清掉等异常下别把空图贴上去
+            self.preview.set_live(pm)
 
     def _stop_playback(self, quiet=False):
         self._replay_timer.stop()
+        self._play_gen += 1     # 作废在途抽帧：停止后结果返回不得把播放拉起来
         if self._play_timer:
             self._play_timer.stop()
             self._play_timer = None
@@ -637,10 +709,9 @@ class GifTab(QWidget):
     # ================= 裁剪 / 参数 =================
     def _on_crop_changed(self, crop):
         if crop is None:
-            self.crop_label.setText("全画面")
+            self.crop_label.setText("全画面 · 在预览图上拖拽框选可只截局部")
         else:
-            self.crop_label.setText(
-                f"选区：x={crop.x()}, y={crop.y()}，{crop.width()} × {crop.height()} px")
+            self.crop_label.setText(f"裁剪 {crop.width()} × {crop.height()} px")
         self._update_estimate()
 
     def _on_ratio(self):
@@ -703,22 +774,53 @@ class GifTab(QWidget):
             return
         w, h = ff.output_dims(self.info["width"], self.info["height"],
                               self._crop_tuple(), self._out_width())
+        if self.target_chk.isChecked():
+            self.estimate.setText(
+                f"目标 ≤ {self.target_spin.value():.1f} MB · {w}×{h}")
+            self._est_timer.stop()
+            return
         fps = self.fps_spin.value()
         colors = int(self.colors_combo.currentText())
         dither = self.dither_combo.currentData()
         dur = self._dur_sec()
         est = ff.estimate_gif_size(w, h, fps, dur, colors, dither)
-        self.estimate.setText(
-            f"输出 {w}×{h} · {fps}fps × {dur:.1f}s · {colors}色 "
-            f"≈ {human_size(est)}（粗略估算，以预览为准）")
+        self.estimate.setText(f"约 {human_size(est)}（粗估）· {w}×{h}")
+        self._est_timer.start(800)      # 防抖后试编校准，替换为实测值
+
+    def _start_est_probe(self):
+        """后台按当前完整参数试编 1 秒外推体积（“实测”标签）。"""
+        if not self.video or self._busy or self._is_playing():
+            return
+        self._est_gen += 1
+        gen = self._est_gen
+        params = dict(start=self._start_sec(), duration=self._dur_sec(),
+                      crop=self._crop_tuple(), width=self._out_width(),
+                      fps=self.fps_spin.value(),
+                      colors=int(self.colors_combo.currentText()),
+                      dither=self.dither_combo.currentData(),
+                      deinterlace=self._deint_mode())
+
+        def job():
+            return ff.estimate_gif_size_probe(self.video, **params)
+
+        wk = FnWorker(job)
+        self._track(wk)
+        wk.gen = gen
+        wk.done.connect(self._on_est_done)   # 失败不连：静默保留粗估
+        wk.start()
+
+    def _on_est_done(self, result):
+        wk = self.sender()
+        if getattr(wk, "gen", 0) != self._est_gen:
+            return
+        if self.target_chk.isChecked() or self._busy or not self.video:
+            return
+        est, _probe_dur = result
+        w, h = ff.output_dims(self.info["width"], self.info["height"],
+                              self._crop_tuple(), self._out_width())
+        self.estimate.setText(f"≈ {human_size(est)}（实测）· {w}×{h}")
 
     # ================= 输出位置 =================
-    def _browse_outdir(self):
-        d = QFileDialog.getExistingDirectory(self, "选择输出目录", self.out_edit.text())
-        if d:
-            self.out_edit.setText(d)
-            self.radio_custom.setChecked(True)
-
     def _resolve_outdir(self):
         if self.radio_custom.isChecked() and self.out_edit.text().strip():
             d = self.out_edit.text().strip()
@@ -754,17 +856,18 @@ class GifTab(QWidget):
         target = fsutil.unique_path(os.path.join(tmp_dir, self._out_name()))
         params = dict(video=self.video, out_path=target,
                       start=self._start_sec(),
-                      duration=self._dur_sec() if self.info["duration"] > 0 else None,
+                      duration=self._dur_sec(),    # 时长未知的文件也按界面输入截取
                       crop=self._crop_tuple(), width=self._out_width(),
                       fps=self.fps_spin.value(),
                       colors=int(self.colors_combo.currentText()),
-                      dither=self.dither_combo.currentData())
-        self._pending_dims = ff.output_dims(self.info["width"], self.info["height"],
-                                            self._crop_tuple(), self._out_width())
+                      dither=self.dither_combo.currentData(),
+                      deinterlace=self._deint_mode(),
+                      target_mb=(self.target_spin.value()
+                                 if self.target_chk.isChecked() else None))
+        self._est_timer.stop()
         self._preview_file = target
         self._busy = True
         self.btn_gen.setEnabled(False)
-        self.btn_pick.setEnabled(False)
         self.btn_play.setEnabled(False)
         self.btn_cancel.setVisible(True)
         self.progress.setVisible(True)
@@ -779,17 +882,24 @@ class GifTab(QWidget):
         self._gen.failed.connect(self._on_gen_failed)
         self._gen.start()
 
-    def _on_preview_ok(self, path, seconds):
+    def _on_preview_ok(self, path, seconds, applied):
         self._busy = False
         self.btn_gen.setEnabled(True)
-        self.btn_pick.setEnabled(True)
         self.btn_play.setEnabled(True)
         self.btn_cancel.setVisible(False)
         self.progress.setVisible(False)
-        size = os.path.getsize(path)
+        size = applied["bytes"]
+        if self.gif_mode and self.info["size"]:
+            pct = max(0.0, (1 - size / self.info["size"]) * 100)
+            self.cmp_label.setText(f"原 {human_size(self.info['size'])} → "
+                                   f"{human_size(size)}（-{pct:.0f}%）")
+        else:
+            self.cmp_label.setText(human_size(size))
+        self.cmp_label.setVisible(True)
         movie = QMovie(path)
         self._movie = movie
-        w, h = self._pending_dims or (self.info["width"], self.info["height"])
+        w, h = ff.output_dims(self.info["width"], self.info["height"],
+                              self._crop_tuple(), applied["width"])
         nat = QSize(w, h)
         if nat.width() <= PREVIEW_W and nat.height() <= PREVIEW_H:
             movie.setScaledSize(nat)
@@ -799,18 +909,25 @@ class GifTab(QWidget):
         movie.start()
         self.preview_stack.setCurrentIndex(1)
         dur = self._dur_sec()
+        adj = ""
+        if applied["adjusted"]:
+            wt = applied["width"] if applied["width"] else "原始宽度"
+            adj = (f"已按目标自动调整：帧率{applied['fps']} · 颜色{applied['colors']}"
+                   f" · 宽度{wt}。")
         self.pv_meta.setText(
-            f"{os.path.basename(path)} · {w}×{h} · {dur:.1f}s · 实际体积 {human_size(size)}"
-            f" · 生成用时 {seconds:.1f}s。确认后点“保存到输出目录”。")
+            f"{os.path.basename(path)} · {w}×{h} · {dur:.1f} 秒 · "
+            f"生成用时 {seconds:.1f}s。{adj}确认后点“保存”。")
         self.pv_meta.setVisible(True)
         self.btn_save.setVisible(True)
         self.btn_discard.setVisible(True)
-        self._status("生成完成，请确认后保存")
+        if applied["adjusted"] and not applied["target_hit"]:
+            self._status("已用最小参数仍超目标体积，产物为可达的最小版本", warn=True)
+        else:
+            self._status("生成完成，请确认后保存")
 
     def _on_gen_failed(self, msg):
         self._busy = False
         self.btn_gen.setEnabled(True)
-        self.btn_pick.setEnabled(True)
         self.btn_play.setEnabled(True)
         self.btn_cancel.setVisible(False)
         self.progress.setVisible(False)
@@ -859,6 +976,7 @@ class GifTab(QWidget):
     def _back_to_edit(self):
         self._release_movie()
         self.preview_stack.setCurrentIndex(0)
+        self.cmp_label.setVisible(False)
         self.pv_meta.setVisible(False)
         self.btn_save.setVisible(False)
         self.btn_discard.setVisible(False)
@@ -904,6 +1022,11 @@ class GifTab(QWidget):
         d = str(c.get("dither", "bayer"))
         di = [v for v, _ in DITHERS].index(d) if d in [v for v, _ in DITHERS] else 0
         self.dither_combo.setCurrentIndex(di)
+        dv = str(c.get("deinterlace", "auto"))
+        dvi = self.deint_combo.findData(dv)
+        self.deint_combo.setCurrentIndex(dvi if dvi >= 0 else 0)
+        self.target_chk.setChecked(bool(c.get("target_mode", False)))
+        self.target_spin.setValue(float(c.get("target_mb", 2.0)))
         self.suffix_edit.setText(str(c.get("suffix", "_gif")))
         mode = str(c.get("outdir_mode", "source"))
         (self.radio_custom if mode == "custom" else self.radio_src).setChecked(True)
@@ -917,6 +1040,9 @@ class GifTab(QWidget):
         c["fps"] = int(self.fps_spin.value())
         c["colors"] = int(self.colors_combo.currentText())
         c["dither"] = self.dither_combo.currentData()
+        c["deinterlace"] = self.deint_combo.currentData()
+        c["target_mode"] = self.target_chk.isChecked()
+        c["target_mb"] = float(self.target_spin.value())
         c["suffix"] = self.suffix_edit.text().strip() or "_gif"
         c["outdir_mode"] = "custom" if self.radio_custom.isChecked() else "source"
         c["outdir"] = self.out_edit.text().strip()
@@ -924,15 +1050,16 @@ class GifTab(QWidget):
     def shutdown(self):
         """退出前收尾：GifTab 是子页签，closeEvent 不会触发，由 MainWindow 调用。"""
         self._sel_timer.stop()
+        self._est_timer.stop()
         self._replay_timer.stop()
         if self._play_timer:
             self._play_timer.stop()
             self._play_timer = None
         if self._gen and self._gen.isRunning():
-            self._gen.cancel()
-            self._gen.wait(3000)    # cancel 会杀掉 ffmpeg，正常毫秒级退出
+            self._gen.cancel()      # cancel 会杀掉 ffmpeg，正常毫秒级退出
+        shutdown_worker(self._gen, 3000)
         for wk in list(self._tmp_workers):
-            wk.wait(1500)
+            shutdown_worker(wk, 1500)
         self._tmp_workers.clear()
         self._release_movie()
         self._cleanup_temp()

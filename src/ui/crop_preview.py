@@ -15,6 +15,7 @@ class CropPreview(QLabel):
     cropChanged = Signal(object)   # QRect(视频像素坐标) 或 None（表示全画面）
     fileDropped = Signal(str)
     editRequested = Signal()       # 播放预览时点击画面 → 请求回到编辑模式
+    openRequested = Signal()       # 空状态点击画面 → 请求打开文件选择框
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -23,6 +24,8 @@ class CropPreview(QLabel):
         self.setMouseTracking(True)
         self.setStyleSheet(
             "CropPreview{background:#17191d;border:1px solid #d1d3d9;border-radius:8px;}")
+        self._hint = ("把视频拖到这里，或点击选择\n\n"
+                      "TS / M2TS / MP4 / MKV / AVI / MOV / WebM / 动图 GIF")
         self._orig = None       # 当前帧 QPixmap（原始尺寸）
         self._scaled = None     # 等比缩放后的显示图
         self._vw = 0
@@ -36,6 +39,11 @@ class CropPreview(QLabel):
         self._crop_before = None
 
     # ---------- 图像与坐标 ----------
+    def set_hint(self, *lines):
+        """未载入文件时画面中央的引导文案。"""
+        self._hint = "\n".join(lines)
+        self.update()
+
     def set_image(self, pixmap, video_w, video_h):
         self._orig = pixmap
         self._vw, self._vh = int(video_w), int(video_h)
@@ -81,6 +89,7 @@ class CropPreview(QLabel):
 
     def end_live(self):
         self._live = False
+        self.update()       # 立即重绘：冻结的最后一帧马上画回裁剪框（编辑态）
 
     def is_live(self):
         return self._live
@@ -177,8 +186,7 @@ class CropPreview(QLabel):
         p = QPainter(self)
         if not self._scaled:
             p.setPen(QColor(147, 160, 180))
-            p.drawText(self.rect(), Qt.AlignCenter,
-                       "将视频或动图 GIF 拖到此处\n（也可点下方“选择视频”按钮）")
+            p.drawText(self.rect(), Qt.AlignCenter, self._hint)
             p.end()
             return
         r = self._disp_rect()
@@ -224,7 +232,12 @@ class CropPreview(QLabel):
                 self.editRequested.emit()
             e.accept()
             return
-        if e.button() != Qt.LeftButton or not self._scaled:
+        if not self._scaled:            # 空状态：整块可点击 → 打开文件框
+            if e.button() == Qt.LeftButton:
+                self.openRequested.emit()
+            e.accept()
+            return
+        if e.button() != Qt.LeftButton:
             return
         pos = e.position().toPoint()
         v = self._to_video(pos)
@@ -284,7 +297,7 @@ class CropPreview(QLabel):
         e.accept()
 
     def _update_cursor(self, pos):
-        if self._live:
+        if self._live or not self._scaled:
             self.setCursor(Qt.PointingHandCursor)
             return
         wr = self._widget_crop_rect()

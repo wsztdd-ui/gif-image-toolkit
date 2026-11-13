@@ -26,6 +26,9 @@ def _shrink(img, max_edge):
         w, h = img.size
         longest = max(w, h)
         if longest > max_edge:
+            if img.mode in ("P", "1"):
+                # 调色板/位图直接 LANCZOS 是按调色板索引重采样，先转 RGB
+                img = img.convert("RGB")
             scale = max_edge / longest
             img = img.resize((max(1, round(w * scale)), max(1, round(h * scale))),
                              Image.LANCZOS)
@@ -64,14 +67,16 @@ def _save_png(img, dst, quantize):
 
 def compress_one(src, dst, fmt="keep", quality=80, max_edge=0, quantize_png=True):
     """压缩/转换单张图片，返回 (原大小, 新大小, 实际格式)。"""
-    img = Image.open(src)
-    img = ImageOps.exif_transpose(img)
-    img = _shrink(img, max_edge)
-    kind = target_kind(src, fmt)
-    if kind == "jpeg":
-        _save_jpeg(img, dst, quality)
-    elif kind == "webp":
-        _save_webp(img, dst, quality)
-    else:
-        _save_png(img, dst, quantize_png)
+    # with 确保源文件句柄确定性关闭：靠 GC 兜底时批量压缩后句柄悬挂，
+    # Windows 下用户立刻移动/删除源图会失败
+    with Image.open(src) as im:
+        img = ImageOps.exif_transpose(im)
+        img = _shrink(img, max_edge)
+        kind = target_kind(src, fmt)
+        if kind == "jpeg":
+            _save_jpeg(img, dst, quality)
+        elif kind == "webp":
+            _save_webp(img, dst, quality)
+        else:
+            _save_png(img, dst, quantize_png)
     return os.path.getsize(src), os.path.getsize(dst), kind

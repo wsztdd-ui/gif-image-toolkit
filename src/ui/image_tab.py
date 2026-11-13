@@ -3,14 +3,16 @@ import os
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor
-from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QFileDialog,
-                               QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-                               QRadioButton, QSlider, QSpinBox, QTableWidget,
-                               QTableWidgetItem, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFrame,
+                               QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+                               QPushButton, QSlider, QSpinBox, QStackedWidget,
+                               QTableWidget, QTableWidgetItem, QVBoxLayout,
+                               QWidget)
 
 from core import ffmpeg as ff
 from core import imglib
-from core.workers import ImgWorker
+from core.workers import ImgWorker, shutdown_worker
+from ui.widgets import Collapsible, OutputLocation
 from utils import fsutil
 from utils.timefmt import human_size
 
@@ -26,6 +28,7 @@ class ImageTab(QWidget):
         self.files = []          # 与表格行一一对应
         self._worker = None
         self._last_dst_dir = None
+        self._cancel_requested = False
         self._build_ui()
         self.apply_settings()
 
@@ -38,6 +41,15 @@ class ImageTab(QWidget):
         right.setContentsMargins(0, 0, 0, 0)
         root.addLayout(left, 1)
         root.addWidget(right_w)
+
+        self.stack = QStackedWidget()
+        self.empty_hint = QLabel("把图片拖到这里，或点击选择\n\n"
+                                 "JPG / PNG / WebP / BMP / TIFF · 支持批量")
+        self.empty_hint.setObjectName("dropHint")
+        self.empty_hint.setAlignment(Qt.AlignCenter)
+        self.empty_hint.setCursor(Qt.PointingHandCursor)
+        self.empty_hint.mousePressEvent = lambda e: self._add_dialog()
+        self.stack.addWidget(self.empty_hint)               # 0 空状态
 
         self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(["文件", "原大小", "压缩后", "节省", "状态"])
@@ -52,7 +64,9 @@ class ImageTab(QWidget):
         self.table.setWordWrap(False)
         self.table.dragEnterEvent = self._table_drag_enter
         self.table.dropEvent = self._table_drop
-        left.addWidget(self.table, 1)
+        self.stack.addWidget(self.table)                    # 1 列表
+        self.stack.setCurrentIndex(0)
+        left.addWidget(self.stack, 1)
 
         brow = QHBoxLayout()
         self.btn_add = QPushButton("添加图片…")
@@ -71,7 +85,7 @@ class ImageTab(QWidget):
         self.summary.setStyleSheet("color:#616161;")
         left.addWidget(self.summary)
 
-        fbox = QGroupBox("压缩 / 转换设置")
+        fbox = QGroupBox("压缩设置")
         fv = QVBoxLayout(fbox)
         fmt_row = QHBoxLayout()
         fmt_row.addWidget(QLabel("输出格式"))
@@ -104,36 +118,14 @@ class ImageTab(QWidget):
         self.edge_spin.setVisible(False)
         e_row.addWidget(self.edge_spin)
         fv.addLayout(e_row)
-        self.quant_chk = QCheckBox("PNG 256 色量化（截图、UI 图推荐）")
-        self.quant_chk.setChecked(True)
-        fv.addWidget(self.quant_chk)
-        self.skip_chk = QCheckBox("自动跳过“压缩后反而变大”的文件")
-        self.skip_chk.setChecked(True)
-        fv.addWidget(self.skip_chk)
-        right.addWidget(fbox)
 
-        obox = QGroupBox("输出位置")
-        ov = QVBoxLayout(obox)
-        orow = QHBoxLayout()
-        self.radio_src = QRadioButton("源文件目录")
-        self.radio_custom = QRadioButton("自定义…")
-        grp = QButtonGroup(self)
-        grp.addButton(self.radio_src)
-        grp.addButton(self.radio_custom)
-        orow.addWidget(self.radio_src)
-        orow.addWidget(self.radio_custom)
-        orow.addStretch(1)
-        ov.addLayout(orow)
-        drow = QHBoxLayout()
-        self.out_edit = QLineEdit()
-        self.out_edit.setPlaceholderText("自定义输出目录")
-        self.out_edit.setEnabled(False)
-        drow.addWidget(self.out_edit, 1)
-        self.btn_browse = QPushButton("…")
-        self.btn_browse.setFixedWidth(32)
-        self.btn_browse.clicked.connect(self._browse_outdir)
-        drow.addWidget(self.btn_browse)
-        ov.addLayout(drow)
+        adv = Collapsible("高级选项")
+        self.quant_chk = QCheckBox("PNG 256 色量化（截图类推荐）")
+        self.quant_chk.setChecked(True)
+        adv.add_widget(self.quant_chk)
+        self.skip_chk = QCheckBox("自动跳过压缩后反而变大的文件")
+        self.skip_chk.setChecked(True)
+        adv.add_widget(self.skip_chk)
         srow = QHBoxLayout()
         srow.addWidget(QLabel("文件后缀"))
         self.suffix_edit = QLineEdit("_c")
@@ -141,25 +133,44 @@ class ImageTab(QWidget):
         srow.addWidget(self.suffix_edit)
         srow.addWidget(QLabel("如 photo.jpg → photo_c.jpg"))
         srow.addStretch(1)
-        ov.addLayout(srow)
-        right.addWidget(obox)
+        adv.add_layout(srow)
+        fv.addWidget(adv)
 
-        gbox = QGroupBox("执行")
-        gv = QVBoxLayout(gbox)
+        self.outloc = OutputLocation("和原图相同的位置")
+        self.radio_src = self.outloc.radio_src
+        self.radio_custom = self.outloc.radio_custom
+        self.out_edit = self.outloc.out_edit
+        fv.addWidget(self.outloc)
+        right.addWidget(fbox)
+
+        card = QFrame()
+        card.setObjectName("card")
+        gv = QVBoxLayout(card)
+        gv.setContentsMargins(10, 10, 10, 10)
+        gv.setSpacing(6)
         self.btn_go = QPushButton("开始压缩")
         self.btn_go.setObjectName("genBtn")
+        self.btn_go.setMinimumHeight(40)
         self.btn_go.clicked.connect(self._start)
         gv.addWidget(self.btn_go)
-        self.btn_open = QPushButton("打开输出目录")
-        self.btn_open.setVisible(False)
-        self.btn_open.clicked.connect(
-            lambda: fsutil.open_in_explorer(self._last_dst_dir))
-        gv.addWidget(self.btn_open)
+        stat_row = QHBoxLayout()
         self.status = QLabel("就绪")
         self.status.setStyleSheet("color:#616161;")
         self.status.setWordWrap(True)
-        gv.addWidget(self.status)
-        right.addWidget(gbox)
+        stat_row.addWidget(self.status, 1)
+        self.btn_cancel = QPushButton("取消")
+        self.btn_cancel.setVisible(False)
+        self.btn_cancel.clicked.connect(self._cancel_compress)
+        stat_row.addWidget(self.btn_cancel)
+        self.btn_open = QPushButton("打开输出目录")
+        self.btn_open.setObjectName("linkBtn")
+        self.btn_open.setCursor(Qt.PointingHandCursor)
+        self.btn_open.setVisible(False)
+        self.btn_open.clicked.connect(
+            lambda: fsutil.open_in_explorer(self._last_dst_dir))
+        stat_row.addWidget(self.btn_open)
+        gv.addLayout(stat_row)
+        right.addWidget(card)
         right.addStretch(1)
 
         self.setAcceptDrops(True)
@@ -197,6 +208,9 @@ class ImageTab(QWidget):
         self.add_files(imgs)
 
     def add_files(self, paths):
+        if self._worker and self._worker.isRunning():
+            self._status("压缩进行中，请等完成后再添加", warn=True)
+            return
         for p in paths:
             ap = os.path.abspath(p)
             if ap in self.files or not os.path.isfile(ap):
@@ -215,6 +229,8 @@ class ImageTab(QWidget):
             self.table.setItem(r, 2, QTableWidgetItem("—"))
             self.table.setItem(r, 3, QTableWidgetItem("—"))
             self.table.setItem(r, 4, QTableWidgetItem("待处理"))
+        if self.files:
+            self.stack.setCurrentIndex(1)
         self._update_summary()
 
     def _remove_selected(self):
@@ -222,11 +238,14 @@ class ImageTab(QWidget):
         for r in rows:
             del self.files[r]
             self.table.removeRow(r)
+        if not self.files:
+            self.stack.setCurrentIndex(0)
         self._update_summary()
 
     def _clear(self):
         self.files.clear()
         self.table.setRowCount(0)
+        self.stack.setCurrentIndex(0)
         self._update_summary()
 
     def _update_summary(self):
@@ -240,12 +259,6 @@ class ImageTab(QWidget):
 
     def _on_edge(self):
         self.edge_spin.setVisible(self.edge_combo.currentData() == "c")
-
-    def _browse_outdir(self):
-        d = QFileDialog.getExistingDirectory(self, "选择输出目录", self.out_edit.text())
-        if d:
-            self.out_edit.setText(d)
-            self.radio_custom.setChecked(True)
 
     # ---------- 执行 ----------
     def _start(self):
@@ -273,6 +286,8 @@ class ImageTab(QWidget):
         self.btn_add.setEnabled(False)      # 运行中禁用会改动行号/列表的操作，
         self.btn_remove.setEnabled(False)   # 防止结果写错行
         self.btn_clear.setEnabled(False)
+        self._cancel_requested = False
+        self.btn_cancel.setVisible(True)
         self._status("压缩中…")
         self._worker = ImgWorker(self.files, opt)
         self._worker.row.connect(self._on_row)
@@ -280,6 +295,12 @@ class ImageTab(QWidget):
         self._worker.done.connect(self._on_done)
         self._worker.failed.connect(self._on_worker_failed)
         self._worker.start()
+
+    def _cancel_compress(self):
+        self._cancel_requested = True
+        if self._worker:
+            self._worker.cancel()
+        self._status("正在取消…")
 
     def _set_running(self, running):
         for b in (self.btn_add, self.btn_remove, self.btn_clear):
@@ -310,13 +331,20 @@ class ImageTab(QWidget):
     def _on_done(self, ok_n, skip_n):
         self.btn_go.setEnabled(True)
         self._set_running(False)
+        self.btn_cancel.setVisible(False)
         self.btn_open.setVisible(True)
-        self._status(f"完成：{ok_n} 个已压缩" + (f"，{skip_n} 个已跳过" if skip_n else ""))
+        if self._cancel_requested:
+            self._status(f"已取消：已完成 {ok_n} 个"
+                         + (f"，{skip_n} 个已跳过" if skip_n else ""))
+        else:
+            self._status(f"完成：{ok_n} 个已压缩"
+                         + (f"，{skip_n} 个已跳过" if skip_n else ""))
         self._update_summary_totals()
 
     def _fail(self, msg):
         self.btn_go.setEnabled(True)
         self._set_running(False)
+        self.btn_cancel.setVisible(False)
         self._status("失败：" + msg, warn=True)
 
     def _update_summary_totals(self):
@@ -371,7 +399,7 @@ class ImageTab(QWidget):
         """退出前收尾：等待/取消后台压缩线程，避免线程在解释器退出时仍存活。"""
         if self._worker and self._worker.isRunning():
             self._worker.cancel()
-            self._worker.wait(2000)
+        shutdown_worker(self._worker, 2000)
 
     def save_settings(self):
         c = self.cfg
