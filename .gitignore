@@ -11,3 +11,13 @@ __pycache__/
 # ffmpeg 二进制不入库（tools\install_ffmpeg.ps1 一键获取）
 bin/ffmpeg.exe
 bin/ffprobe.exe
+
+# PyInstaller 中间产物
+build/gifkit/
+
+# 本地会话与发布物料（不入库）
+.zcode/
+publish/
+publish.zip
+单文件版/
+

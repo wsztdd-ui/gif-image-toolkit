@@ -61,6 +61,14 @@ QPushButton#genBtn{{background:{ACCENT};color:#fff;border:1px solid {ACCENT};}}
 QPushButton#genBtn:hover{{background:{ACCENT_HOVER};}}
 QPushButton#genBtn:pressed{{background:{ACCENT_PRESSED};}}
 QPushButton#genBtn:disabled{{background:#a9c6e4;color:#f0f6fc;border:1px solid #a9c6e4;}}
+QFrame#card{{background:{CARD};border:1px solid {DIVIDER};border-radius:8px;}}
+QPushButton#linkBtn{{border:none;background:transparent;color:{ACCENT};
+  padding:0;font-weight:600;text-decoration:underline;}}
+QPushButton#linkBtn:hover{{color:{ACCENT_HOVER};}}
+QPushButton#linkBtn:disabled{{color:#bdbdbd;background:transparent;}}
+QLabel#dropHint{{background:{CARD};border:2px dashed {STROKE};border-radius:8px;
+  color:{TEXT2};font-size:11pt;}}
+QLabel#dropHint:hover{{border-color:{ACCENT};}}
 QProgressBar{{background:#e0e0e0;border:none;border-radius:3px;max-height:6px;}}
 QProgressBar::chunk{{background:{ACCENT};border-radius:3px;}}
 QSlider{{background:transparent;}}

@@ -1,28 +1,32 @@
 @echo off
 rem ============================================================
-rem  GifKit æ‰“åŒ…è„šæœ¬
-rem    build.bat          â†’ å•æ–‡ä»¶ç‰ˆ  dist\GifKit.exe
-rem    build.bat onedir   â†’ æ–‡ä»¶å¤¹ç‰ˆ  dist\GifKit\ï¼ˆæ•´ä¸ªæ–‡ä»¶å¤¹å‹ç¼©å³ç»¿è‰²ç‰ˆï¼‰
-rem  å‰ç½®ï¼šå·²å®‰è£… Python 3.10+ï¼›å»ºè®® bin\ å†…å·²æ”¾ ffmpeg.exe/ffprobe.exe
+rem  GifKit ´ò°ü½Å±¾
+rem    build.bat                  = µ¥ÎÄ¼ş°æ£¬Êä³ö dist\GifKit.exe
+rem    build.bat onedir           = ÎÄ¼ş¼Ğ°æ£¬Êä³ö dist\GifKit\£¨Õû¸öÎÄ¼ş¼ĞÑ¹Ëõ¼´ÂÌÉ«°æ£©
+rem    build.bat single v0.3.0    = µ¥ÎÄ¼ş°æÊä³öµ½ dist\v0.3.0\£¨µÚ¶ş¸ö²ÎÊıÖ¸¶¨×ÓÎÄ¼ş¼Ğ£¬²»¶¯¾É²úÎï£©
+rem  Ç°ÖÃ£ºÒÑ°²×° Python 3.10+£»½¨Òé bin\ ÄÚÒÑ·Å ffmpeg.exe/ffprobe.exe
 rem ============================================================
 setlocal
 cd /d %~dp0..
 
-echo [1/3] å®‰è£…ä¾èµ–ï¼ˆPySide6 / Pillow / pyinstallerï¼‰...
+echo [1/3] °²×°ÒÀÀµ£¨PySide6 / Pillow / pyinstaller£©...
 python -m pip install -r requirements.txt pyinstaller || exit /b 1
 
 set SPEC=build\gifkit.spec
 if /i "%~1"=="onedir" set SPEC=build\gifkit_onedir.spec
 
-echo [2/3] PyInstaller æ‰“åŒ…ï¼ˆ%SPEC%ï¼‰...
-python -m PyInstaller --noconfirm --clean "%SPEC%" || exit /b 1
+set DIST=dist
+if not "%~2"=="" set DIST=dist\%~2
 
-if not exist bin\ffmpeg.exe echo [!] æç¤ºï¼šbin\ å†…æ²¡æœ‰ ffmpeg.exeï¼Œæ‰“åŒ…äº§ç‰©åªèƒ½ä¾èµ–ç›®æ ‡æœºå™¨çš„ PATH
+echo [2/3] PyInstaller ´ò°ü£¨%SPEC% Êä³öµ½ %DIST%\£©...
+python -m PyInstaller --noconfirm --clean --distpath "%DIST%" "%SPEC%" || exit /b 1
 
-echo [3/3] å®Œæˆã€‚
+if not exist bin\ffmpeg.exe echo [!] ÌáÊ¾£ºbin\ ÄÚÃ»ÓĞ ffmpeg.exe£¬´ò°ü²úÎïÖ»ÄÜÒÀÀµÄ¿±ê»úÆ÷µÄ PATH
+
+echo [3/3] Íê³É¡£
 if /i "%~1"=="onedir" (
-  echo   æ–‡ä»¶å¤¹ç‰ˆè¾“å‡º: dist\GifKit\  â€”â€” å‹ç¼©æ•´ä¸ªæ–‡ä»¶å¤¹å³ä¸ºç»¿è‰²ä¾¿æºç‰ˆ
+  echo   ÎÄ¼ş¼Ğ°æÊä³ö: %DIST%\GifKit\  ¡ª¡ª Ñ¹ËõÕû¸öÎÄ¼ş¼Ğ¼´ÎªÂÌÉ«±ãĞ¯°æ
 ) else (
-  echo   å•æ–‡ä»¶ç‰ˆè¾“å‡º: dist\GifKit.exe
+  echo   µ¥ÎÄ¼ş°æÊä³ö: %DIST%\GifKit.exe
 )
 endlocal

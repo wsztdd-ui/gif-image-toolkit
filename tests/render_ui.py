@@ -67,3 +67,7 @@ win.tabs.setCurrentIndex(1)
 settle(app, 300)
 win.grab().save(os.path.join(ROOT, "build", "ui_preview_img.png"))
 print("img page saved")
+
+# 收尾：等后台线程跑完再退出，否则 QThread 带线程销毁会 0xC0000409
+win.gif_tab.shutdown()
+win.img_tab.shutdown()

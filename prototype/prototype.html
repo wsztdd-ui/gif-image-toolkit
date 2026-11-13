@@ -36,9 +36,13 @@
   .chips{display:flex; gap:6px; flex-wrap:wrap;}
   .chip{cursor:pointer; border:1px solid var(--border); background:var(--panel2); color:var(--muted); font-size:12px; padding:4px 12px; border-radius:20px;}
   .chip.active{background:var(--accent); border-color:var(--accent); color:#fff;}
-  /* 预览区 */
+  /* ===== 空状态 = 大拖放区（v0.4 简化 1） ===== */
   .drop{border:2px dashed var(--border); border-radius:12px; transition:.15s; cursor:pointer;}
   .drop.over{border-color:var(--accent); background:rgba(79,140,255,.06);}
+  .empty{min-height:260px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; text-align:center; color:var(--muted); padding:24px;}
+  .empty .big{font-size:44px; line-height:1.3;}
+  .empty b{color:var(--text); font-size:15px;}
+  /* 预览区 */
   #stage{display:flex; justify-content:center; padding:10px;}
   #frame{position:relative; overflow:hidden; border-radius:8px; background:#000; touch-action:none; user-select:none;}
   #frame video{width:100%; height:100%; display:block;}
@@ -50,24 +54,38 @@
   #cropBox .h.nw{left:-7px; top:-7px; cursor:nwse-resize;} #cropBox .h.ne{right:-7px; top:-7px; cursor:nesw-resize;}
   #cropBox .h.sw{left:-7px; bottom:-7px; cursor:nesw-resize;} #cropBox .h.se{right:-7px; bottom:-7px; cursor:nwse-resize;}
   #cropLabel{position:absolute; left:0; top:-24px; color:#35e0ff; font-size:12px; white-space:nowrap; text-shadow:0 1px 2px #000;}
-  #emptyHint{text-align:center; color:var(--muted); padding:70px 10px;}
-  #emptyHint .big{font-size:40px;}
+  /* 源文件一行信息（v0.4 简化 4：取代"源文件信息"面板） */
+  #fileLine{margin:4px 10px 10px; padding:7px 12px; background:var(--panel2); border-radius:8px; font-size:12.5px; color:var(--muted);}
+  #fileLine b{color:var(--text); font-weight:600;}
   /* 时间轴 & 缩略图 */
   #thumbs{display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;}
   #thumbs img,#thumbs .skel{width:96px; height:54px; object-fit:cover; border-radius:6px; cursor:pointer; border:1px solid var(--border); background:#20283a; flex:none;}
   #thumbs .cap{font-size:10px; color:var(--muted); text-align:center;}
+  /* ===== 折叠"高级"（v0.4 简化 2） ===== */
+  details.adv{margin-top:10px; border-top:1px solid var(--border); padding-top:8px;}
+  details.adv summary{cursor:pointer; color:var(--muted); font-size:12.5px; user-select:none; width:max-content;}
+  details.adv summary:hover{color:var(--text);}
+  details.adv .row{margin-top:8px;}
+  /* ===== 输出位置一行化（v0.4 简化 3） ===== */
+  .outloc{margin-top:10px; font-size:13px; color:var(--muted);}
+  .outloc b{color:var(--text); font-weight:600;}
+  .outloc a{margin-left:8px;}
   .kv{display:flex; justify-content:space-between; font-size:13px; padding:2px 0;}
   .kv span:first-child{color:var(--muted);}
-  #estimate{background:var(--panel2); border-radius:8px; padding:8px 12px; font-size:13px; color:var(--accent2);}
+  #estimate{background:var(--panel2); border-radius:8px; padding:8px 12px; font-size:14px; color:var(--accent2); cursor:help;}
   #progressWrap{display:none; margin-top:10px;}
   #progressBar{height:8px; background:var(--panel2); border-radius:6px; overflow:hidden;}
   #progressFill{height:100%; width:0%; background:linear-gradient(90deg,var(--accent),var(--accent2)); transition:width .1s;}
   #genStatus{font-size:12px; color:var(--muted); margin-top:4px;}
-  #resultCard{display:none; border:1px solid var(--accent2); background:rgba(34,211,167,.08); border-radius:10px; padding:10px 14px; margin-top:10px; font-size:13px;}
-  #resultCard b{color:var(--accent2);}
-  #pvAnim{height:150px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;
+  /* ===== 结果卡片（v0.4 简化 5） ===== */
+  #previewCard{display:none; border:1px solid var(--accent2); background:rgba(34,211,167,.06); border-radius:10px; padding:12px 14px; margin-top:10px;}
+  .cmp{font-size:16px; margin:2px 0;}
+  .cmp b{color:var(--accent2);}
+  #pvAnim{height:150px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;margin-top:8px;
     background:linear-gradient(45deg,#16233c,#1d2c1f,#2a1c33,#16233c);background-size:300% 300%;animation:pvm 1.8s ease-in-out infinite;}
   @keyframes pvm{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+  #resultCard{display:none; border:1px solid var(--accent2); background:rgba(34,211,167,.08); border-radius:10px; padding:10px 14px; margin-top:10px; font-size:13px;}
+  #resultCard b{color:var(--accent2);}
   .warn{color:#ffd479; font-size:12px; margin-top:6px;}
   /* 图片页 */
   table{width:100%; border-collapse:collapse; font-size:13px;}
@@ -84,7 +102,7 @@
 <body>
 <header>
   <div class="logo">Gif<b>Kit</b></div>
-  <span class="badge">交互原型 v0.2 · 已按 2026-10-03 反馈更新</span>
+  <span class="badge">交互原型 v0.4 · UI 简化稿（2026-10-11）</span>
   <div class="tabs">
     <div class="tab active" data-page="p1">🎬 视频转 GIF</div>
     <div class="tab" data-page="p2">🖼 图片压缩</div>
@@ -94,11 +112,14 @@
 <!-- ============ 页1：视频转GIF ============ -->
 <div class="page active" id="p1">
   <div>
+    <!-- 简化1：整块空状态即拖放区，点击=选择文件；不再有独立"选择视频"按钮 -->
     <div class="card drop" id="drop1">
-      <div id="emptyHint"><div class="big">🎞️</div><b>将视频或动图 GIF 拖到此处</b><br>
-        <span class="note">支持 TS / M2TS / MP4 / MKV / AVI / MOV / FLV / WebM / WMV …<br>
-        拖入动图 GIF 直接进入再压缩（正式版重设调色板，可再调宽度/帧率/颜色）<br>
-        原型提示：MP4/WebM/动图GIF 可真实预览；TS 等浏览器不支持的格式显示示意画面（正式版由 ffmpeg 抽帧）</span></div>
+      <div class="empty" id="emptyHint">
+        <div class="big">🎞️</div>
+        <b>把视频拖到这里，或点击选择文件</b>
+        <span class="note">TS / M2TS / MP4 / MKV / AVI / MOV / WebM / WMV / 动图 GIF 均可</span>
+        <span class="note">原型提示：MP4 / WebM / 动图GIF 可真实预览；TS 显示示意画面（正式版由 ffmpeg 抽帧）</span>
+      </div>
       <div id="stage" style="display:none">
         <div id="frame">
           <video id="vid" playsinline muted style="display:none"></video>
@@ -111,6 +132,8 @@
           <div id="cropBox"><div class="h nw"></div><div class="h ne"></div><div class="h sw"></div><div class="h se"></div><div id="cropLabel"></div></div>
         </div>
       </div>
+      <!-- 简化4：源文件信息一行化，取代独立信息面板 -->
+      <div id="fileLine" style="display:none"></div>
     </div>
     <div class="card" id="timeCard" style="display:none">
       <h3>截取时间</h3>
@@ -118,44 +141,53 @@
       <div class="row"><label class="lab">时长</label><input type="range" id="durS" min="0.1" max="15" step="0.1" value="5"><span id="durV" style="min-width:70px;text-align:right;font-variant-numeric:tabular-nums">00:05.0</span><input type="number" id="durN" min="0.1" step="0.1" value="5" style="width:76px"><button class="btn" id="fullBtn">选整段</button></div>
       <div class="note" id="durNote"></div>
       <div id="thumbs"></div>
-      <div class="note" style="margin-top:6px">点击缩略图 = 设为起点（正式版由 ffmpeg 抽取 8 张缩略图）</div>
     </div>
   </div>
 
   <div>
-    <div class="card" id="infoCard" style="display:none"><h3>源文件信息</h3><div id="infoBody"></div></div>
     <div class="card" id="cropCard" style="display:none">
-      <h3>裁剪范围（在预览图上拖拽框选）</h3>
+      <h3>裁剪</h3>
       <div class="row chips" id="ratioChips">
         <span class="chip active" data-r="">自由</span><span class="chip" data-r="1.7778">16:9</span><span class="chip" data-r="1">1:1</span><span class="chip" data-r="0.5625">9:16</span><span class="chip" data-r="1.3333">4:3</span>
       </div>
-      <div class="row"><span id="cropInfo" class="note">全画面</span><button class="btn" id="cropReset" style="margin-left:auto">重置</button></div>
+      <div class="row"><span id="cropInfo" class="note">在预览图上拖拽框选，四角缩放、框内拖动</span><button class="btn" id="cropReset" style="margin-left:auto">重置</button></div>
     </div>
+    <!-- 简化2：默认只露 质量预设+宽度；帧率/颜色/抖动/后缀 进"高级参数" -->
     <div class="card" id="outCard" style="display:none">
-      <h3>输出设置</h3>
+      <h3>输出</h3>
       <div class="row"><label class="lab">质量预设</label>
         <div class="chips" id="presetChips">
           <span class="chip" data-p="hq">高质量</span><span class="chip active" data-p="mid">均衡</span><span class="chip" data-p="lq">高压缩</span>
         </div></div>
       <div class="row"><label class="lab">宽度</label><select id="widthSel">
-        <option value="720" selected>720（默认 · 16:9 源即 720×405）</option><option value="0">原始宽度</option><option value="640">640</option><option value="480">480</option><option value="360">360</option><option value="240">240</option><option value="c">自定义…</option></select>
+        <option value="720" selected>720（默认）</option><option value="0">原始宽度</option><option value="640">640</option><option value="480">480</option><option value="360">360</option><option value="240">240</option><option value="c">自定义…</option></select>
         <input type="number" id="widthN" value="720" min="64" max="1920" style="width:76px; display:none"></div>
-      <div class="row"><label class="lab">帧率</label><input type="number" id="fpsN" value="12" min="3" max="30" step="1" style="width:66px"><span class="note">自由输入 3–30</span>
-        <label class="lab" style="min-width:52px">颜色数</label><select id="colorsSel"><option>256</option><option selected>128</option><option>64</option><option>32</option></select>
-        <label class="lab" style="min-width:52px">抖动</label><select id="ditherSel"><option value="bayer" selected>Bayer 体积小</option><option value="floyd">Floyd 更平滑</option><option value="none">无</option></select></div>
-      <div id="estimate">—</div>
-      <div class="row" style="margin-top:10px"><label class="lab">输出到</label>
-        <label><input type="radio" name="od" checked> 源文件目录</label>
-        <label><input type="radio" name="od"> 自定义…</label></div>
-      <div class="row"><label class="lab">文件后缀</label><input type="text" id="suffix" value="_gif" style="width:90px"><span class="note">源文件名 + 后缀 + .gif</span></div>
+      <!-- 简化4：估算只说体积和尺寸，细节悬停可见 -->
+      <div id="estimate" title="粗略估算，以实际生成为准">—</div>
+      <details class="adv" id="advDetails">
+        <summary>高级参数</summary>
+        <div class="row"><label class="lab">帧率</label><input type="number" id="fpsN" value="12" min="3" max="30" step="1" style="width:66px"><span class="note">3–30</span>
+          <label class="lab" style="min-width:52px">颜色数</label><select id="colorsSel"><option>256</option><option selected>128</option><option>64</option><option>32</option></select></div>
+        <div class="row"><label class="lab">抖动</label><select id="ditherSel"><option value="bayer" selected>Bayer 体积小</option><option value="floyd">Floyd 更平滑</option><option value="none">无</option></select>
+          <label class="lab" style="min-width:52px">文件后缀</label><input type="text" id="suffix" value="_gif" style="width:80px"></div>
+      </details>
+      <!-- 简化3：输出位置默认一行，点"更改"才展开 -->
+      <div class="outloc">保存到：<b id="locLabel">和视频相同的位置</b><a class="dl" id="locToggle">更改</a></div>
+      <div id="locPanel" style="display:none">
+        <div class="row"><label><input type="radio" name="od" id="odSrc" checked> 和视频相同的位置</label>
+          <label><input type="radio" name="od" id="odCus"> 自定义目录…</label></div>
+        <div class="row"><input type="text" placeholder="输出目录（正式版为目录选择框）" style="flex:1" disabled></div>
+      </div>
     </div>
+    <!-- 简化5：生成 → 结果卡（预览 + 体积结论 + 大保存按钮） -->
     <div class="card" id="genCard" style="display:none">
-      <button class="btn primary big" id="genBtn">生成预览</button>
+      <button class="btn primary big" id="genBtn">生成 GIF</button>
       <div id="progressWrap"><div id="progressBar"><div id="progressFill"></div></div><div id="genStatus">准备中…</div></div>
-      <div id="previewCard" style="display:none">
+      <div id="previewCard">
+        <div class="cmp" id="cmpLine"></div>
+        <div id="pvMeta" class="note"></div>
         <div id="pvAnim">▶ GIF 预览（模拟动画）</div>
-        <div id="pvMeta" class="note" style="margin:8px 0"></div>
-        <div class="row"><button class="btn primary" id="saveBtn" style="flex:1">保存到输出目录</button><button class="btn" id="discardBtn">重新调整</button></div>
+        <div class="row" style="margin-top:10px"><button class="btn primary" id="saveBtn" style="flex:1">保存</button><button class="btn" id="discardBtn">重新调整</button></div>
       </div>
       <div id="resultCard"></div>
     </div>
@@ -166,8 +198,11 @@
 <div class="page" id="p2">
   <div>
     <div class="card drop" id="drop2">
-      <div id="imgEmpty"><div style="text-align:center;color:var(--muted);padding:34px 10px"><div style="font-size:36px">🖼️</div><b>将图片拖到此处</b><br>
-        <span class="note">支持 JPG / PNG / WebP / BMP / GIF(静态) / TIFF，可多选批量</span></div></div>
+      <div class="empty" id="imgEmpty">
+        <div class="big">🖼️</div>
+        <b>把图片拖到这里，或点击选择文件</b>
+        <span class="note">JPG / PNG / WebP / BMP / TIFF，支持批量多选</span>
+      </div>
       <div id="imgTableWrap" style="display:none">
         <table><thead><tr><th>文件</th><th>原大小</th><th>压缩后</th><th>节省</th><th>操作</th></tr></thead>
         <tbody id="imgRows"></tbody></table>
@@ -182,25 +217,37 @@
       <div class="row"><label class="lab">输出格式</label><select id="fmtSel">
         <option value="keep" selected>保持原格式</option><option value="jpeg">JPEG</option><option value="webp">WebP（更小）</option><option value="png">PNG</option></select></div>
       <div class="row"><label class="lab">质量 <span id="qV">80</span></label><input type="range" id="qR" min="10" max="100" value="80" class="grow"></div>
-      <div class="row"><label class="lab">最长边</label><select id="edgeSel">
+      <div class="row"><label class="lab">最长边</label><select id="edgeSel" class="grow">
         <option value="0" selected>保持原始尺寸</option><option value="2560">2560</option><option value="1920">1920</option><option value="1280">1280</option><option value="800">800</option></select></div>
-      <div class="row"><label><input type="checkbox" id="quantChk" checked> PNG 256 色量化（截图类推荐）</label></div>
-      <div class="row"><label class="lab">输出到</label><label><input type="radio" name="od2" checked> 源文件目录</label><label><input type="radio" name="od2"> 自定义…</label></div>
-      <div class="row"><label class="lab">文件后缀</label><input type="text" value="_c" style="width:90px"><span class="note">自动跳过反而变大的文件</span></div>
+      <details class="adv">
+        <summary>高级选项</summary>
+        <div class="row"><label><input type="checkbox" id="quantChk" checked> PNG 256 色量化（截图类推荐）</label></div>
+        <div class="row"><label><input type="checkbox" id="skipChk" checked> 自动跳过压缩后反而变大的文件</label></div>
+        <div class="row"><label class="lab">文件后缀</label><input type="text" id="suffix2" value="_c" style="width:80px"></div>
+      </details>
+      <div class="outloc">保存到：<b id="loc2Label">和原图相同的位置</b><a class="dl" id="loc2Toggle">更改</a></div>
+      <div id="locPanel2" style="display:none">
+        <div class="row"><label><input type="radio" name="od2" id="od2Src" checked> 和原图相同的位置</label>
+          <label><input type="radio" name="od2" id="od2Cus"> 自定义目录…</label></div>
+        <div class="row"><input type="text" placeholder="输出目录（正式版为目录选择框）" style="flex:1" disabled></div>
+      </div>
     </div>
-    <div class="card"><button class="btn primary big" id="imgGo">开始压缩</button>
-      <div class="note" style="margin-top:8px">原型中压缩由浏览器 Canvas 真实执行（JPEG/WebP 与正式版算法不同，仅供参考体积感受）；正式版使用 Pillow：JPEG/WebP 质量压缩 + PNG 256 色量化，效果更好。</div></div>
+    <div class="card">
+      <button class="btn primary big" id="imgGo">开始压缩</button>
+      <div class="note" id="imgStatus" style="margin-top:8px"></div>
+      <div class="note" style="margin-top:8px">原型中压缩由浏览器 Canvas 真实执行（JPEG/WebP 与正式版算法不同，仅供参考体积感受）；正式版使用 Pillow：JPEG/WebP 质量压缩 + PNG 256 色量化，效果更好。</div>
+    </div>
   </div>
 </div>
 
-<footer>交互原型 · 用于确认界面布局与操作流程 · "生成预览 → 保存"为两段式流程 · 支持拖入动图 GIF 再压缩 · GIF 生成在原型中为模拟演示 · 正式版：PySide6 桌面程序 + 内置 ffmpeg，绿色免安装单 exe</footer>
+<footer>交互原型 v0.4（UI 简化稿）· 默认路径：拖入 → 选质量档 → 生成 → 保存；帧率/颜色/抖动/后缀在「高级参数」，输出目录在「更改」· "生成 → 确认 → 保存"两段式不变 · 正式版为 Fluent 2 浅色主题（本原型为深色结构稿）</footer>
 <div id="toast"></div>
 
 <script>
 "use strict";
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 const SW=1280, SH=720;                       // 原型虚拟源分辨率（正式版为真实视频分辨率）
-const state={file:null,name:"",dur:0,sw:SW,sh:SH,playable:false,gifMode:false,
+const state={file:null,name:"",dur:0,sw:SW,sh:SH,playable:false,gifMode:false,origSize:0,
   crop:{x:.1,y:.1,w:.8,h:.8},ratio:null,busy:false};
 let lastEst=0;
 
@@ -234,16 +281,14 @@ function wireDrop(el,accept){
 }
 wireDrop($("#drop1"),"video"); wireDrop($("#drop2"),"image");
 $("#drop1").addEventListener("click",e=>{if(!state.file&&!state.busy)toast("原型：正式版此处打开文件选择框");});
+$("#drop2").addEventListener("click",e=>{if(imgFiles.length===0)toast("原型：正式版此处打开多选文件框");});
 
 /* ---------- 视频载入 ---------- */
 function loadVideo(f){
   if(state.busy)return;
-  state.gifMode=false;
+  state.gifMode=false; state.origSize=f.size;
   state.file=URL.createObjectURL(f); state.name=f.name.replace(/\.[^.]+$/,"");
-  $("#emptyHint").style.display="none"; $("#stage").style.display="flex";
-  $("#timeCard").style.display="block";$("#infoCard").style.display="block";
-  $("#cropCard").style.display="block";$("#outCard").style.display="block";$("#genCard").style.display="block";
-  $("#resultCard").style.display="none";$("#previewCard").style.display="none";$("#progressWrap").style.display="none";
+  showLoaded();
   const ext=f.name.split(".").pop().toLowerCase();
   const vid=$("#vid"),ph=$("#placeholder"),gimg=$("#gimg");
   vid.style.display="none";ph.style.display="none";gimg.style.display="none";
@@ -258,12 +303,9 @@ function loadVideo(f){
 /* 动图 GIF 再压缩：浏览器可直接播放 GIF，抽帧/时长正式版由 ffprobe 读取 */
 function loadGifFile(f){
   if(state.busy)return;
-  state.gifMode=true;
+  state.gifMode=true; state.origSize=f.size;
   state.file=URL.createObjectURL(f); state.name=f.name.replace(/\.[^.]+$/,"");
-  $("#emptyHint").style.display="none"; $("#stage").style.display="flex";
-  $("#timeCard").style.display="block";$("#infoCard").style.display="block";
-  $("#cropCard").style.display="block";$("#outCard").style.display="block";$("#genCard").style.display="block";
-  $("#resultCard").style.display="none";$("#previewCard").style.display="none";$("#progressWrap").style.display="none";
+  showLoaded();
   const vid=$("#vid"),ph=$("#placeholder"),gimg=$("#gimg");
   vid.style.display="none";ph.style.display="none";gimg.style.display="block";
   gimg.src=state.file;
@@ -271,16 +313,19 @@ function loadGifFile(f){
     state.dur=0; afterMeta(f,"gif",true); };
   gimg.onerror=()=>{ state.sw=SW; state.sh=SH; state.dur=0; afterMeta(f,"gif",true); };
 }
-function afterMeta(f,ext,fallback){
-  layoutFrame(); resetCrop(); initTime(); buildThumbs(); renderInfo(f,ext,fallback); updateEst();
+function showLoaded(){
+  $("#emptyHint").style.display="none"; $("#stage").style.display="flex";
+  $("#fileLine").style.display="block";
+  $("#timeCard").style.display="block";
+  $("#cropCard").style.display="block";$("#outCard").style.display="block";$("#genCard").style.display="block";
+  $("#resultCard").style.display="none";$("#previewCard").style.display="none";$("#progressWrap").style.display="none";
 }
-function renderInfo(f,ext,fallback){
-  $("#infoBody").innerHTML=
-    `<div class="kv"><span>文件</span><span>${f.name}</span></div>
-     <div class="kv"><span>大小</span><span>${size(f.size)}</span></div>
-     <div class="kv"><span>分辨率</span><span>${state.sw} × ${state.sh}</span></div>
-     <div class="kv"><span>时长</span><span>${state.dur?fmt(state.dur):"未知（正式版由 ffprobe 读取）"}</span></div>
-     <div class="kv"><span>编码</span><span>${state.gifMode?"GIF（动图再压缩）":(fallback?ext+"（示意）":ext)}</span></div>`;
+function afterMeta(f,ext,fallback){
+  layoutFrame(); resetCrop(); initTime(); buildThumbs(); renderFileLine(f,ext,fallback); updateEst();
+}
+/* 简化4：源信息一行，去掉编码等细节 */
+function renderFileLine(f,ext,fallback){
+  $("#fileLine").innerHTML=`<b>${f.name}</b>　${size(f.size)} · ${state.sw}×${state.sh} · ${state.dur?fmt(state.dur):"时长未知"}${state.gifMode?" · 动图":""}`;
 }
 /* 预览框尺寸=媒体比例 */
 function layoutFrame(){
@@ -299,9 +344,11 @@ window.addEventListener("resize",()=>{if(state.file)layoutFrame();});
 function initTime(){
   const known=state.dur>0;
   ["#startS","#durS"].forEach(s=>$(s).disabled=!known);
-  $("#durNote").textContent=known?"":(state.gifMode
-    ?"动图的帧数/时长正式版由 ffprobe 读取；右侧时长输入用于体积估算，预览以实际生成为准。"
-    :"此格式浏览器无法读取时长，原型中时间控件禁用；正式版由 ffprobe 直接读取（含 TS）。");
+  $("#durNote").textContent=known
+    ?"拖两端选范围，按住中间整体平移；点缩略图设为起点。"
+    :(state.gifMode
+      ?"动图的帧数/时长正式版由 ffprobe 读取；右侧时长输入用于体积估算，预览以实际生成为准。"
+      :"此格式浏览器无法读取时长，原型中时间控件禁用；正式版由 ffprobe 直接读取（含 TS）。");
   if(known){
     const d=Math.min(5,state.dur);
     $("#startS").max=state.dur; $("#startS").value=0; $("#startN").value=0;
@@ -334,7 +381,7 @@ function buildThumbs(){
   const ctx=c.getContext("2d");let i=0;
   const next=()=>{
     if(i>=N){vid.currentTime=+$("#startS").value;return;}
-    const t=state.dur*(i+.5)/N;
+    const t=state.dur*(i+.5)/N; i++;
     const old=vid.onseeked;
     const to=setTimeout(()=>{vid.onseeked=old;next();},2500);
     vid.onseeked=()=>{vid.onseeked=old;clearTimeout(to);
@@ -350,7 +397,7 @@ function buildThumbs(){
 }
 
 /* ---------- 裁剪 ---------- */
-function resetCrop(){state.crop={x:.1,y:.1,w:.8,h:.8};applyRatioToCrop();drawCrop();updateCropInfo();}
+function resetCrop(){state.crop={x:0,y:0,w:1,h:1};applyRatioToCrop();drawCrop();updateCropInfo();}
 function applyRatioToCrop(){
   const r=state.ratio,ar=$("#frame")._ar||16/9;
   if(r){state.crop.h=state.crop.w*ar/r;}
@@ -359,17 +406,18 @@ function applyRatioToCrop(){
 }
 function drawCrop(){
   const c=state.crop,b=$("#cropBox");
-  if(!state.file){b.style.display="none";return;}
+  if(!state.file||(c.w>=.999&&c.h>=.999)){b.style.display="none";return;}
   b.style.display="block";
   b.style.left=(c.x*100)+"%";b.style.top=(c.y*100)+"%";
   b.style.width=(c.w*100)+"%";b.style.height=(c.h*100)+"%";
   const sw=Math.round(c.w*state.sw),sh=Math.round(c.h*state.sh);
   $("#cropLabel").textContent=sw+" × "+sh+" px";
 }
+/* 简化4：选区只报尺寸，不再显示 x/y 坐标 */
 function updateCropInfo(){
   const c=state.crop;
-  $("#cropInfo").textContent=(c.w>=.999&&c.h>=.999)?"全画面":
-    `选区：x=${Math.round(c.x*state.sw)}, y=${Math.round(c.y*state.sh)}, ${Math.round(c.w*state.sw)}×${Math.round(c.h*state.sh)} px`;
+  $("#cropInfo").textContent=(c.w>=.999&&c.h>=.999)?"在预览图上拖拽框选，四角缩放、框内拖动":
+    `裁剪 ${Math.round(c.w*state.sw)} × ${Math.round(c.h*state.sh)} px`;
 }
 $$("#ratioChips .chip").forEach(ch=>ch.onclick=()=>{
   $$("#ratioChips .chip").forEach(x=>x.classList.toggle("active",x===ch));
@@ -427,6 +475,18 @@ $("#widthSel").addEventListener("change",()=>{const c=$("#widthSel").value;
   $("#widthN").style.display=c==="c"?"inline-block":"none";updateEst();});
 $("#widthN").addEventListener("input",updateEst);
 
+/* 简化3：输出位置"更改"展开/收起 */
+function wireLoc(toggleId,panelId,labelId,radioSrc,radioCus,sameText){
+  $("#"+toggleId).onclick=()=>{const p=$("#"+panelId);p.style.display=p.style.display==="none"?"block":"none";};
+  const upd=()=>{
+    $("#"+labelId).textContent=$("#"+radioCus).checked?"自定义目录":sameText;
+  };
+  $("#"+radioSrc).addEventListener("change",upd);
+  $("#"+radioCus).addEventListener("change",upd);
+}
+wireLoc("locToggle","locPanel","locLabel","odSrc","odCus","和视频相同的位置");
+wireLoc("loc2Toggle","locPanel2","loc2Label","od2Src","od2Cus","和原图相同的位置");
+
 function outDims(){
   const c=state.crop;
   const w0=Math.max(2,Math.round(c.w*state.sw)),h0=Math.max(2,Math.round(c.h*state.sh));
@@ -435,6 +495,7 @@ function outDims(){
   const outH=Math.round(h0*outW/w0);   /* GIF 无偶数限制，720 宽 16:9 源精确到 405 */
   return[outW,outH,w0,h0];
 }
+/* 简化4：估算一句话，细节放悬停提示 */
 function updateEst(){
   if(!state.file){$("#estimate").textContent="—";lastEst=0;return;}
   const[outW,outH]=outDims();
@@ -445,12 +506,12 @@ function updateEst(){
   const cf=.65+.35*(colors/256);
   const bytes=outW*outH*fps*dur*base*cf;
   lastEst=bytes;
-  $("#estimate").innerHTML=`输出 <b>${outW}×${outH}</b> · ${fps}fps × ${dur.toFixed(1)}s · ${colors}色 ≈ <b>${size(bytes)}</b>（粗略估算，以实际生成为准）`;
+  $("#estimate").innerHTML=`约 <b>${size(bytes)}</b> · ${outW}×${outH} · ${dur.toFixed(1)} 秒`;
 }
 
-/* ---------- 生成预览 → 保存（两段式，模拟） ---------- */
+/* ---------- 生成 → 结果卡（两段式，模拟） ---------- */
 $("#genBtn").onclick=()=>{
-  if(!state.file)return toast("请先拖入视频或动图 GIF");
+  if(!state.file)return toast("请先把视频拖进来");
   if(state.busy)return;
   state.busy=true;$("#genBtn").disabled=true;
   $("#resultCard").style.display="none";$("#previewCard").style.display="none";
@@ -466,15 +527,25 @@ $("#genBtn").onclick=()=>{
     $("#progressWrap").style.display="none";
     const[outW,outH]=outDims();
     const dur=parseFloat($("#durS").value)||0;
-    $("#pvMeta").textContent=`${state.name}${$("#suffix").value||""}.gif · ${outW}×${outH} · ${dur.toFixed(1)}s · 实际体积 ${size(lastEst)}（原型以模拟动画示意，正式版此处内嵌循环播放生成的 GIF，预览体积即最终体积）`;
+    /* 简化5：体积结论。动图再压缩给前后对比；视频截取只报尺寸/时长/体积 */
+    if(state.gifMode&&state.origSize>0){
+      const pct=(1-lastEst/state.origSize)*100;
+      $("#cmpLine").innerHTML=`原 <b>${size(state.origSize)}</b> → <b>${size(lastEst)}</b>（-${Math.max(0,pct).toFixed(0)}%）`;
+    }else{
+      $("#cmpLine").innerHTML=`<b>${size(lastEst)}</b>`;
+    }
+    $("#pvMeta").textContent=`${state.name}${$("#suffix").value||"_gif"}.gif · ${outW}×${outH} · ${dur.toFixed(1)} 秒（原型以模拟动画示意，正式版此处内嵌循环播放生成的 GIF，预览体积即最终体积）`;
     $("#previewCard").style.display="block";
   }
 };
 $("#saveBtn").onclick=()=>{
+  if($("#previewCard").style.display==="none")return;   /* 未生成完成时不可保存 */
   $("#previewCard").style.display="none";
   $("#resultCard").style.display="block";
-  $("#resultCard").innerHTML=`<b>✔ 已保存（模拟）</b>　${state.name}${$("#suffix").value||""}.gif<br>
-    <span class="note">输出位置：源目录 \\ ${state.name}${$("#suffix").value||""}.gif（正式版保存临时预览产物，秒级完成，可一键打开目录）</span>`;
+  $("#resultCard").innerHTML=`<b>✔ 已保存（模拟）</b>　${state.name}${$("#suffix").value||"_gif"}.gif · ${size(lastEst)}<br>
+    <span class="note">保存到：${$("#locLabel").textContent}　</span><a class="dl" id="openDirLink">打开目录</a>　<a class="dl" id="againLink">继续调整</a>`;
+  $("#openDirLink").onclick=()=>toast("原型：正式版打开输出目录");
+  $("#againLink").onclick=()=>{$("#resultCard").style.display="none";$("#previewCard").style.display="block";};
 };
 $("#discardBtn").onclick=()=>{$("#previewCard").style.display="none";};
 
@@ -487,33 +558,38 @@ function addImage(f){
 }
 function renderImg(){
   const has=imgFiles.length>0;
-  $("#imgEmpty").style.display=has?"none":"block";
+  $("#imgEmpty").style.display=has?"none":"flex";
   $("#imgTableWrap").style.display=has?"block":"none";
   const tb=$("#imgRows");tb.innerHTML="";
   let saved=0;
   imgFiles.forEach((r,i)=>{
     const tr=document.createElement("tr");
     let cells=`<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.name}">${r.name}</td><td>${size(r.size)}</td>`;
-    if(r.result){const s=r.result.saving;
+    if(r.result&&r.result.skipped){cells+=`<td>—</td><td>—</td><td class="note">已跳过（未减小）</td>`;}
+    else if(r.result){const s=r.result.saving;
       cells+=`<td>${size(r.result.size)}</td><td class="${s>=0?"save-pos":"save-neg"}">${s>=0?"-":"+"}${Math.abs(s).toFixed(1)}%</td>
       <td><a class="dl" data-i="${i}">⬇ 下载</a></td>`;
-      saved+=r.result.size-r.size;}
+      saved+=r.size-r.result.size;}
     else if(r.result===false)cells+=`<td>—</td><td class="save-neg">失败</td><td></td>`;
     else cells+=`<td>—</td><td>—</td><td></td>`;
     tr.innerHTML=cells;tb.appendChild(tr);
   });
   tb.querySelectorAll("a.dl").forEach(a=>a.onclick=()=>{const r=imgFiles[+a.dataset.i];if(r.url){const x=document.createElement("a");x.href=r.url;x.download=r.result.name;x.click();}});
-  $("#imgSummary").textContent=has?`共 ${imgFiles.length} 个文件`+(saved>0?`，已节省 ${size(-saved)}`:""):"";
+  $("#imgSummary").textContent=has?`共 ${imgFiles.length} 个文件`+(saved>0?`，已节省 ${size(saved)}`:""):"";
 }
 $("#imgAdd").onclick=()=>toast("原型：正式版此处打开多选文件框");
-$("#imgClear").onclick=()=>{imgFiles.length=0;renderImg();};
+$("#imgClear").onclick=()=>{imgFiles.length=0;renderImg();$("#imgStatus").textContent="";};
 $("#qR").addEventListener("input",()=>$("#qV").textContent=$("#qR").value);
 $("#imgGo").onclick=async()=>{
   if(!imgFiles.length)return toast("请先添加图片");
-  const fmtv=$("#fmtSel").value,q=(+$("#qR").value)/100,edge=+$("#edgeSel").value,quant=$("#quantChk").checked;
+  const fmtv=$("#fmtSel").value,q=(+$("#qR").value)/100,edge=+$("#edgeSel").value;
+  const quant=$("#quantChk").checked,skip=$("#skipChk").checked;
+  const sfx=$("#suffix2").value||"_c";
   $("#imgGo").disabled=true;
-  for(const r of imgFiles){
-    r.result=null;try{
+  let done=0,skippedN=0;
+  for(let idx=0;idx<imgFiles.length;idx++){
+    const r=imgFiles[idx];
+    r.result=null;$("#imgStatus").textContent=`压缩中 ${idx+1}/${imgFiles.length}…`;try{
       const bmp=await createImageBitmap(r._ref);
       let w=bmp.width,h=bmp.height;
       if(edge&&Math.max(w,h)>edge){const k=edge/Math.max(w,h);w=Math.round(w*k);h=Math.round(h*k);}
@@ -528,15 +604,22 @@ $("#imgGo").onclick=async()=>{
         else{mime="image/jpeg";ext="jpg";}}
       const blob=await new Promise(res=>cv.toBlob(res,mime,quality));
       if(!blob)throw new Error("浏览器不支持该编码");
-      const name=r.name.replace(/\.[^.]+$/,"")+"_c."+ext;
-      r.result={size:blob.size,saving:(1-blob.size/r.size)*100,name};
-      if(r.url)URL.revokeObjectURL(r.url);
-      r.url=URL.createObjectURL(blob);
-      if(ext==="png")toast("提示：PNG 走浏览器无损编码，正式版用 256 色量化效果更好");
+      const name=r.name.replace(/\.[^.]+$/,"")+sfx+"."+ext;
+      if(skip&&blob.size>=r.size){r.result={skipped:true};skippedN++;}
+      else{
+        r.result={size:blob.size,saving:(1-blob.size/r.size)*100,name};done++;
+        if(r.url)URL.revokeObjectURL(r.url);
+        r.url=URL.createObjectURL(blob);
+      }
+      if(ext==="png"&&quant)$("#imgStatus").textContent=`压缩中 ${idx+1}/${imgFiles.length}…（正式版 PNG 走 256 色量化，效果更好）`;
     }catch(err){r.result=false;}
     renderImg();
   }
   $("#imgGo").disabled=false;
+  const savedB=imgFiles.reduce((a,r)=>a+(r.result&&r.result.size?r.size-r.result.size:0),0);
+  $("#imgStatus").innerHTML=`完成：${done} 个已压缩`+(skippedN?`，${skippedN} 个已跳过`:"")+
+    (savedB>0?`，共节省 ${size(savedB)}`:"")+` · <a class="dl" id="openDir2">打开输出目录</a>`;
+  $("#openDir2").onclick=()=>toast("原型：正式版打开输出目录");
 };
 </script>
 </body>
