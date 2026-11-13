@@ -91,11 +91,14 @@ build\build.bat onedir   rem → dist\GifKit\     文件夹版（启动更快）
 
 | 命令 | 覆盖内容 |
 |---|---|
-| `python tests\test_pipeline.py` | 端到端：TS 截取 720×405、裁剪、动图再压缩、图片压缩/量化 |
-| `python tests\test_modes.py` | I;16 / F / CMYK / PA / La 等罕见像素模式 × JPEG/WebP/PNG |
-| `python tests\test_cancel.py` | 取消生成后 ffmpeg 子进程零残留（mac/Linux 用 pgrep） |
-| `python tests\test_movie_release.py` | 预览动画播放中保存，文件句柄正确释放（Windows 专项，其他平台 SKIP） |
-| `python tests\render_ui.py` | 离屏渲染 UI 冒烟（载入 → 播放 → 裁剪 → 图片页） |
+| `python tests/test_pipeline.py` | 端到端：TS 截取 720×405、裁剪、动图再压缩、图片压缩/量化 |
+| `python tests/test_modes.py` | I;16 / F / CMYK / PA / La 等罕见像素模式 × JPEG/WebP/PNG |
+| `python tests/test_full_features.py` | 全量功能端到端（离屏）：两页全部功能 + 设置持久化 |
+| `python tests/test_cancel.py` | 取消生成后 ffmpeg 子进程零残留（mac/Linux 用 pgrep） |
+| `python tests/test_replay_race.py` | 选段预览重播竞态回归（画面不闪空提示） |
+| `python tests/test_movie_release.py` | 预览动画播放中保存，文件句柄正确释放（Windows 专项，其他平台 SKIP） |
+| `python tests/smoke_main_window.py` | 整窗冒烟（主题/字体/两页签/配置加载） |
+| `python tests/render_ui.py` | 离屏渲染 UI 冒烟（载入 → 播放 → 裁剪 → 图片页） |
 
 ## 📁 目录结构
 

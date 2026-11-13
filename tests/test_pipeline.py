@@ -74,7 +74,8 @@ def main():
     subprocess.run(
         [ff.tool_path("ffmpeg"), "-y", "-f", "lavfi",
          "-i", "testsrc2=size=1280x720:rate=25:duration=2",
-         "-c:v", "mpeg2video", "-q:v", "4", "-flags", "+ilme+ildct", "-top", "1",
+         "-c:v", "mpeg2video", "-q:v", "4", "-flags", "+ilme+ildct",
+         "-vf", "setparams=tff",   # ffmpeg 9 起移除编码选项 -top，用滤镜设场序
          "-f", "mpegts", src_il],
         check=True, capture_output=True, creationflags=ff.CREATE_NO_WINDOW)
     info_il = ff.probe(src_il)

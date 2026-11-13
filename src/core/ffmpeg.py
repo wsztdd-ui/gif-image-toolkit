@@ -59,7 +59,8 @@ def tool_path(name: str):
 def available():
     missing = [n for n in ("ffmpeg", "ffprobe") if not tool_path(n)]
     if missing:
-        return False, "未找到 " + "、".join(missing) + "：请放入程序目录的 bin\\ 文件夹，或加入 PATH"
+        return False, ("未找到 " + "、".join(missing)
+                       + "：放入程序目录的 bin/ 文件夹（tools/ 脚本可一键下载），或安装到系统 PATH")
     return True, "OK"
 
 
@@ -254,8 +255,8 @@ def make_gif(video, out_path, start=0.0, duration=None, crop=None, width=720,
     width_l = _down_ladder(start_w, WIDTH_LADDER, 240)
     target = float(target_mb) * 1024 * 1024 if target_mb else None
 
-    tmp_pal = os.path.join(tempfile.gettempdir(),
-                           f"gifkit_{os.getpid()}_palette.png")
+    pfd, tmp_pal = tempfile.mkstemp(prefix="gifkit_palette_", suffix=".png")
+    os.close(pfd)       # 试编估算与正式生成可能并发，调色板文件必须每次唯一
     rounds = []                       # (size, path, fps, colors, width)
 
     def report(p, base, span):

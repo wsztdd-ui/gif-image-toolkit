@@ -41,6 +41,11 @@ jobs:
         run: |
           python tests/test_modes.py
           python tests/test_pipeline.py
+          python tests/test_full_features.py
+          python tests/test_cancel.py
+          python tests/test_replay_race.py
+          python tests/smoke_main_window.py
+          python tests/test_movie_release.py
       - name: 打包
         run: |
           python tools/make_icon.py
@@ -85,6 +90,10 @@ jobs:
           PY=${PYTHON:-python3}
           $PY tests/test_modes.py
           $PY tests/test_pipeline.py
+          $PY tests/test_full_features.py
+          $PY tests/test_cancel.py
+          $PY tests/test_replay_race.py
+          $PY tests/smoke_main_window.py
       - name: 打包
         run: bash build/build.sh
       - uses: actions/upload-artifact@v4
@@ -118,6 +127,10 @@ jobs:
         run: |
           python tests/test_modes.py
           python tests/test_pipeline.py
+          python tests/test_full_features.py
+          python tests/test_cancel.py
+          python tests/test_replay_race.py
+          python tests/smoke_main_window.py
       - name: 打包
         run: bash build/build.sh
       - uses: actions/upload-artifact@v4
@@ -145,6 +158,15 @@ jobs:
         run: |
           cat > notes.md <<'EOF'
           全平台绿色免安装版：下载对应平台的文件，解压（或直接双击 AppImage / exe）即用，**内含 ffmpeg，无需额外安装**。
+
+          **v0.5.0 更新（相对 v0.2.1）**
+          - 🎯 **目标体积模式**：勾选「压到指定体积」，自动下调帧率/颜色数/宽度，生成不超过目标大小的 GIF
+          - 📺 **隔行源自动去隔行**：自动检测 1080i 类素材并启用 yadif，也可手动开/关
+          - 🔄 **动图再压缩**：GIF 拖入即再压缩，显示前后体积对比（测试中 658KB → 187KB）
+          - 📏 体积估算升级：粗估 + 试编实测校准（按当前参数实编 1 秒外推全段）
+          - 🧹 UI 简化：默认只露「质量预设 + 宽度」，帧率/颜色数/抖动/后缀收进「高级参数」折叠区
+          - 🖼 图片压缩：多线程并行、EXIF 自动纠偏、罕见像素模式（I;16 / F / CMYK / PA / La）支持
+          - ⏱ 修复选段预览重播竞态；取消更稳，ffmpeg 子进程零残留
 
           | 平台 | 文件 | 说明 |
           |---|---|---|

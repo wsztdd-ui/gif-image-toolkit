@@ -323,7 +323,8 @@ def scene_gif_settings(app):
     t1.dither_combo.setCurrentIndex(2)
     t1.suffix_edit.setText("_x")
     t1.radio_custom.setChecked(True)
-    t1.out_edit.setText("D:\\out_test_dir")
+    out_path = os.path.join(tempfile.gettempdir(), "gifkit_out_test_dir")
+    t1.out_edit.setText(out_path)
     t1.save_settings()
     t2 = GifTab(cfg["gif"])
     check("设置往返还原", t2.width_combo.currentData() == "480"
@@ -332,7 +333,7 @@ def scene_gif_settings(app):
           and t2.dither_combo.currentData() == "none"
           and t2.suffix_edit.text() == "_x"
           and t2.radio_custom.isChecked()
-          and t2.out_edit.text() == "D:\\out_test_dir")
+          and t2.out_edit.text() == out_path)
     t1.shutdown()
     t2.shutdown()
 
@@ -496,7 +497,8 @@ def make_media(tmp):
             "-c:v", "mpeg2video", "-q:v", "4", "-f", "mpegts",
             os.path.join(tmp, "long.ts")])
     run_ff(["-y", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=25:duration=2",
-            "-c:v", "mpeg2video", "-q:v", "4", "-flags", "+ilme+ildct", "-top", "1",
+            "-c:v", "mpeg2video", "-q:v", "4", "-flags", "+ilme+ildct",
+            "-vf", "setparams=tff",   # ffmpeg 9 起移除编码选项 -top，用滤镜设场序
             "-f", "mpegts", os.path.join(tmp, "il.ts")])
     from PIL import Image
     Image.effect_noise((1600, 900), 60).resize((1600, 900)).convert("RGB").save(
